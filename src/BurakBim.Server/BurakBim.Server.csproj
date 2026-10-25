@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    BURAK BIM MCP server. Zero NuGet dependencies.
+    Normal build (Windows):  dotnet publish (Release, win-x64, self-contained, single file)
+    CI / non-Windows compile check: OfflineCheck=true (drops WPF/WinForms; UI tools compile out)
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>BurakBim.Server</AssemblyName>
+    <RootNamespace>BurakBim.Server</RootNamespace>
+    <ApplicationIcon>..\..\assets\burakbim.ico</ApplicationIcon>
+    <Version>1.2.0</Version>
+    <Company>BURAK BIM</Company>
+    <Product>BURAK BIM</Product>
+    <Description>BURAK BIM - one MCP connector for Revit, AutoCAD, Civil 3D, Navisworks, Inventor, ReCap and more.</Description>
+    <Copyright>Copyright (c) BURAK BIM</Copyright>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <NoWarn>CA1416;CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8619;CS8620;CS8625;CS8714</NoWarn>
+    <ApplicationIcon Condition="Exists('..\..\assets\burakbim.ico')">..\..\assets\burakbim.ico</ApplicationIcon>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(OfflineCheck)' != 'true'">
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(OfflineCheck)' == 'true'">
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- keep WinForms/Drawing out of global usings (fully-qualified where used) -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Packs\*.pack" />
+    <EmbeddedResource Include="Packs\*.json" />
+    <EmbeddedResource Include="..\..\assets\burakbim-64.png" LogicalName="brand.burakbim-64.png" />
+    <EmbeddedResource Include="..\..\assets\burakbim-logo-220.png" LogicalName="brand.burakbim-logo-220.png" />
+    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

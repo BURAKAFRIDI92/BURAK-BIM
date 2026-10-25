@@ -1,0 +1,372 @@
+# BURAK BIM tool pack - Navisworks Manage/Simulate 2022-2027: daily coordination operations
+# (appearance profiles, model compare, proximity, plan cuts, issue viewpoints, clash triage, TimeLiner CSV)
+
+@@ navis_appearance_profile
+title: Appearance profiler (colour rules)
+host: navisworks
+set: navisworks
+tx: true
+desc: Colour and/or make transparent everything matching each rule, like Navisworks' Appearance Profiler: [{"category":"Element","property":"Category","value":"Ducts","rgb":[0,120,255],"transparency":0}]. op per rule: equals (default), contains, defined.
+arg: rules | array! | List of {category, property, value, op, rgb, transparency}
+arg: resetFirst | boolean | Reset all appearance overrides first
+code:
+if (B("resetFirst")) doc.Models.ResetAllPermanentMaterials();
+var res = new List<object>();
+foreach (var o in A("rules").OfType<Dictionary<string, object>>())
+{
+    var cat = BurakBim.Shared.Json.Str(o, "category"); var prop = BurakBim.Shared.Json.Str(o, "property"); var val = BurakBim.Shared.Json.Str(o, "value");
+    var op = BurakBim.Shared.Json.Str(o, "op", val == null ? "defined" : "equals");
+    var s = new Search(); s.Selection.SelectAll(); s.Locations = SearchLocations.DescendantsAndSelf;
+    var c = SearchCondition.HasPropertyByDisplayName(cat, prop);
+    if (op == "equals") c = c.EqualValue(VariantData.FromDisplayString(val)).IgnoreStringValueCase();
+    else if (op == "contains") c = c.DisplayStringContains(val).IgnoreStringValueCase();
+    s.SearchConditions.Add(c);
+    var items = s.FindAll(doc, false);
+    var rgb = BurakBim.Shared.Json.Get(o, "rgb");
+    if (rgb != null) { var v = BurakBim.Shared.Json.Vec(rgb); doc.Models.OverridePermanentColor(items, new Color(v[0] / 255.0, v[1] / 255.0, v[2] / 255.0)); }
+    if (o.ContainsKey("transparency")) doc.Models.OverridePermanentTransparency(items, BurakBim.Shared.Json.Num(o, "transparency") / 100.0);
+    res.Add(R("rule", cat + "/" + prop + " " + op + " " + val, "items", items.Count));
+}
+return res;
+
+@@ navis_visibility_by_property
+title: Hide / show / isolate by property
+host: navisworks
+set: navisworks
+tx: true
+desc: Hide, show, isolate or make transparent every item whose property matches - e.g. hide all Element/Category = Ceilings, isolate Element/Level = L03.
+arg: category | string! | Property category
+arg: property | string! | Property name
+arg: value | string | Value (omit = property defined)
+arg: op | string | equals (default), contains, defined
+arg: mode | string! | hide, show, isolate, transparent
+code:
+var s = new Search(); s.Selection.SelectAll(); s.Locations = SearchLocations.DescendantsAndSelf;
+var c = SearchCondition.HasPropertyByDisplayName(S("category"), S("property"));
+var op = S("op", Has("value") ? "equals" : "defined");
+if (op == "equals") c = c.EqualValue(VariantData.FromDisplayString(S("value"))).IgnoreStringValueCase();
+else if (op == "contains") c = c.DisplayStringContains(S("value")).IgnoreStringValueCase();
+s.SearchConditions.Add(c);
+var items = s.FindAll(doc, false);
+switch (S("mode"))
+{
+    case "hide": doc.Models.SetHidden(items, true); break;
+    case "show": doc.Models.SetHidden(items, false); break;
+    case "transparent": doc.Models.OverridePermanentTransparency(items, 0.8); break;
+    default:
+        var keep = new HashSet<ModelItem>(); foreach (ModelItem it in items) { foreach (var x in it.DescendantsAndSelf) keep.Add(x); foreach (var x in it.Ancestors) keep.Add(x); }
+        var hide = new ModelItemCollection();
+        foreach (ModelItem root in doc.Models.RootItems)
+        {
+            var st = new Stack<ModelItem>(); st.Push(root);
+            while (st.Count > 0) { var n = st.Pop(); if (keep.Contains(n)) { if (!items.Contains(n)) foreach (var ch in n.Children) st.Push(ch); } else hide.Add(n); }
+        }
+        doc.Models.SetHidden(hide, true); break;
+}
+return R("mode", S("mode"), "items", items.Count);
+
+@@ navis_compare_models
+title: Compare two models (revision check)
+host: navisworks
+set: navisworks
+tx: false
+desc: Compares two appended models (e.g. last week's and this week's NWC of a discipline) by an id property (default Element/Id, fallback InstanceGuid): items added, removed and moved / resized (bounding box change above tolerance). Optionally colours added green, moved orange and selects the changes.
+arg: modelA | string! | Old model file name (contains)
+arg: modelB | string! | New model file name (contains)
+arg: idCategory | string | Id property category (default Element)
+arg: idProperty | string | Id property name (default Id)
+arg: tolerance | number | Bounding box tolerance in model units (default 0.01)
+arg: colorize | boolean | Colour the changes in model B
+arg: limit | integer | Max listed per group (default 100)
+code:
+Model ma = null, mb = null;
+foreach (Model m in doc.Models) { if (ma == null && m.FileName.IndexOf(S("modelA"), StringComparison.OrdinalIgnoreCase) >= 0) ma = m; else if (mb == null && m.FileName.IndexOf(S("modelB"), StringComparison.OrdinalIgnoreCase) >= 0) mb = m; }
+if (ma == null || mb == null) Fail("Both models must be appended. Models: " + string.Join(", ", doc.Models.Cast<Model>().Select(x => x.FileName)));
+string ic = S("idCategory", "Element"), ip = S("idProperty", "Id"); double tol = N("tolerance", 0.01);
+Func<Model, Dictionary<string, ModelItem>> index = m =>
+{
+    var d = new Dictionary<string, ModelItem>();
+    foreach (ModelItem it in m.RootItem.DescendantsAndSelf)
+    {
+        if (!it.HasGeometry && it.Children.Any()) { var p0 = it.PropertyCategories.FindPropertyByDisplayName(ic, ip); if (p0 == null) continue; }
+        var p = it.PropertyCategories.FindPropertyByDisplayName(ic, ip);
+        string key = p != null && p.Value != null ? p.Value.ToDisplayString() : (it.InstanceGuid != Guid.Empty ? it.InstanceGuid.ToString() : null);
+        if (key != null && !d.ContainsKey(key)) d[key] = it;
+    }
+    return d;
+};
+var A0 = index(ma); var B0 = index(mb);
+var added = new ModelItemCollection(); var removed = new List<ModelItem>(); var moved = new ModelItemCollection();
+foreach (var kv in B0)
+{
+    ModelItem old; if (!A0.TryGetValue(kv.Key, out old)) { added.Add(kv.Value); continue; }
+    var b1 = old.BoundingBox(); var b2 = kv.Value.BoundingBox(); if (b1 == null || b2 == null) continue;
+    if (Math.Abs(b1.Min.X - b2.Min.X) > tol || Math.Abs(b1.Min.Y - b2.Min.Y) > tol || Math.Abs(b1.Min.Z - b2.Min.Z) > tol || Math.Abs(b1.Max.X - b2.Max.X) > tol || Math.Abs(b1.Max.Y - b2.Max.Y) > tol || Math.Abs(b1.Max.Z - b2.Max.Z) > tol) moved.Add(kv.Value);
+}
+foreach (var kv in A0) if (!B0.ContainsKey(kv.Key)) removed.Add(kv.Value);
+if (B("colorize")) { doc.Models.OverridePermanentColor(added, new Color(0.1, 0.75, 0.2)); doc.Models.OverridePermanentColor(moved, new Color(1.0, 0.55, 0.0)); var sel = new ModelItemCollection(); sel.AddRange(added); sel.AddRange(moved); doc.CurrentSelection.CopyFrom(sel); }
+int lim = I("limit", 100);
+return R("modelA", ma.FileName, "modelB", mb.FileName, "itemsA", A0.Count, "itemsB", B0.Count, "added", added.Count, "removed", removed.Count, "movedOrResized", moved.Count,
+    "addedItems", DescAll(added, lim), "removedItems", DescAll(removed, lim), "movedItems", DescAll(moved, lim));
+
+@@ navis_items_distance
+title: Distance between items
+host: navisworks
+set: navisworks
+tx: false
+desc: Clearance between the bounding boxes of two items (or of the two selected items): overall gap and per-axis gap in model units and mm - quick clearance check (0 = boxes touch / overlap).
+arg: handleA | string | First item handle (default first selected)
+arg: handleB | string | Second item handle (default second selected)
+code:
+var sel = doc.CurrentSelection.SelectedItems.Cast<ModelItem>().ToList();
+ModelItem a = Has("handleA") ? (ModelItem)FromHandle(S("handleA")) : (sel.Count > 0 ? sel[0] : null);
+ModelItem b = Has("handleB") ? (ModelItem)FromHandle(S("handleB")) : (sel.Count > 1 ? sel[1] : null);
+if (a == null || b == null) Fail("Select two items or pass handleA and handleB.");
+var x = a.BoundingBox(); var y = b.BoundingBox();
+double gx = Math.Max(0, Math.Max(x.Min.X - y.Max.X, y.Min.X - x.Max.X)), gy = Math.Max(0, Math.Max(x.Min.Y - y.Max.Y, y.Min.Y - x.Max.Y)), gz = Math.Max(0, Math.Max(x.Min.Z - y.Max.Z, y.Min.Z - x.Max.Z));
+var d = Math.Sqrt(gx * gx + gy * gy + gz * gz);
+return R("a", Desc(a), "b", Desc(b), "gap", d, "gapMm", d * ToMm, "gapXYZmm", new[] { gx * ToMm, gy * ToMm, gz * ToMm }, "centreDistanceMm", (x.Center - y.Center).Length * ToMm);
+
+@@ navis_items_near
+title: Items near an item (proximity search)
+host: navisworks
+set: navisworks
+tx: false
+desc: Geometry items whose bounding boxes come within a distance (mm) of the scope items - e.g. everything within 500 mm of a selected duct. Optionally filtered by a property and selected.
+arg: distanceMm | number | Search distance (default 300)
+arg: category | string | Optional property filter category
+arg: property | string | Optional property filter name
+arg: value | string | Optional property filter value (contains)
+arg: select | boolean | Select the results
+arg: limit | integer | Max listed (default 200)
+code:
+var src = ((ModelItemCollection)Items()).BoundingBox(); var d = N("distanceMm", 300) / ToMm;
+var lo = new Point3D(src.Min.X - d, src.Min.Y - d, src.Min.Z - d); var hi = new Point3D(src.Max.X + d, src.Max.Y + d, src.Max.Z + d);
+var scope = new HashSet<ModelItem>(); foreach (ModelItem it in Items()) foreach (var x in it.DescendantsAndSelf) scope.Add(x);
+var res = new ModelItemCollection();
+foreach (ModelItem root in doc.Models.RootItems)
+    foreach (ModelItem it in root.DescendantsAndSelf)
+    {
+        if (!it.HasGeometry || scope.Contains(it)) continue;
+        var b = it.BoundingBox(); if (b == null || b.IsEmpty) continue;
+        if (b.Max.X < lo.X || b.Min.X > hi.X || b.Max.Y < lo.Y || b.Min.Y > hi.Y || b.Max.Z < lo.Z || b.Min.Z > hi.Z) continue;
+        if (Has("property")) { var p = it.PropertyCategories.FindPropertyByDisplayName(S("category"), S("property")); if (p == null || (Has("value") && p.Value.ToDisplayString().IndexOf(S("value"), StringComparison.OrdinalIgnoreCase) < 0)) continue; }
+        res.Add(it);
+    }
+if (B("select")) doc.CurrentSelection.CopyFrom(res);
+return R("found", res.Count, "items", DescAll(res, I("limit", 200)));
+
+@@ navis_plan_cut
+title: Plan cut at a level / elevation
+host: navisworks
+set: navisworks
+tx: false
+desc: Section the model as a plan: keeps everything between a bottom and a top elevation (model units), or between a grid level and the cut height above it - floor-by-floor coordination views.
+arg: level | string | Grid level name (bottom)
+arg: bottom | number | Bottom elevation (instead of level)
+arg: cutHeight | number | Height above bottom to cut (model units, default 1.2 m equivalent)
+arg: top | number | Top elevation (instead of cutHeight)
+arg: saveAs | string | Save the result as a viewpoint with this name
+code:
+double z0;
+if (Has("level")) { z0 = double.NaN; dynamic sys = ((dynamic)doc).Grids.ActiveSystem; foreach (dynamic l in sys.Levels) if (string.Equals((string)l.DisplayName, S("level"), StringComparison.OrdinalIgnoreCase)) z0 = (double)l.Elevation; if (double.IsNaN(z0)) Fail("Level not found."); }
+else z0 = N("bottom");
+double z1 = Has("top") ? N("top") : z0 + (Has("cutHeight") ? N("cutHeight") : 1200.0 / ToMm);
+var bb = doc.GetBoundingBox(false); var inv = System.Globalization.CultureInfo.InvariantCulture;
+var json = string.Format(inv, "{{\"Type\":\"ClipPlaneSet\",\"Version\":1,\"OrientedBox\":{{\"Type\":\"OrientedBox3D\",\"Version\":1,\"Box\":[[{0},{1},{2}],[{3},{4},{5}]],\"Rotation\":[0,0,0]}},\"Enabled\":true}}", bb.Min.X - 1, bb.Min.Y - 1, z0, bb.Max.X + 1, bb.Max.Y + 1, z1);
+doc.ActiveView.SetClippingPlanes(json);
+var vp = doc.CurrentViewpoint.CreateCopy(); var c = bb.Center; var size = Math.Max(bb.Size.X, bb.Size.Y);
+vp.Projection = ViewpointProjection.Orthographic; vp.Position = new Point3D(c.X, c.Y, z1 + size); vp.PointAt(new Point3D(c.X, c.Y, z0));
+doc.CurrentViewpoint.CopyFrom(vp);
+if (Has("saveAs")) { var sv = new SavedViewpoint(doc.CurrentViewpoint.CreateCopy()); sv.DisplayName = S("saveAs"); doc.SavedViewpoints.AddCopy(sv); }
+return R("bottom", z0, "top", z1, "saved", S("saveAs"));
+
+@@ navis_issue_viewpoints
+title: One viewpoint per item (issue views)
+host: navisworks
+set: navisworks
+tx: false
+desc: Creates a saved viewpoint zoomed to each scope item (named by a property or item name) inside a viewpoint folder - instant issue list for RFIs and reviews.
+arg: folder | string | Viewpoint folder name (default BURAK BIM Issues)
+arg: nameCategory | string | Property category for the view name (default Item)
+arg: nameProperty | string | Property name for the view name (default Name)
+arg: limit | integer | Max viewpoints (default 50)
+code:
+var folder = new FolderItem(); folder.DisplayName = S("folder", "BURAK BIM Issues"); doc.SavedViewpoints.AddCopy(folder);
+GroupItem target = doc.SavedViewpoints.RootItem.Children.OfType<GroupItem>().Last(g => g.DisplayName == folder.DisplayName);
+int n = 0; var names = new List<object>();
+foreach (ModelItem it in Items())
+{
+    if (n >= I("limit", 50)) break;
+    var col = new ModelItemCollection(); col.Add(it); doc.CurrentSelection.CopyFrom(col);
+    var vp = doc.CurrentViewpoint.CreateCopy(); vp.ZoomBox(it.BoundingBox()); doc.CurrentViewpoint.CopyFrom(vp);
+    var p = it.PropertyCategories.FindPropertyByDisplayName(S("nameCategory", "Item"), S("nameProperty", "Name"));
+    var nm = (n + 1).ToString("000") + " " + (p != null ? p.Value.ToDisplayString() : it.DisplayName);
+    var sv = new SavedViewpoint(doc.CurrentViewpoint.CreateCopy()); sv.DisplayName = nm;
+    doc.SavedViewpoints.InsertCopy(target, target.Children.Count, sv); names.Add(nm); n++;
+}
+return R("folder", folder.DisplayName, "viewpoints", names);
+
+@@ navis_clash_select_items
+title: Clash: select clashing items
+host: navisworks
+set: navisworks
+tx: false
+desc: Selects (and optionally colours red) every item involved in the clashes of a test with the given statuses - shows the problem elements in the model.
+arg: test | string! | Clash test
+arg: statuses | strings | Statuses (default New, Active, Reviewed)
+arg: colorize | boolean | Colour them red
+code:
+var st = new HashSet<string>(SL("statuses") ?? new List<string> { "New", "Active", "Reviewed" }, StringComparer.OrdinalIgnoreCase);
+var items = new ModelItemCollection(); dynamic t = Test(S("test"));
+foreach (dynamic r in t.Children)
+{
+    var list = new List<dynamic>(); if ((bool)r.IsGroup) foreach (dynamic c in r.Children) list.Add(c); else list.Add(r);
+    foreach (dynamic c in list) { if (!st.Contains((string)c.Status.ToString())) continue; if (c.Item1 != null) items.Add((ModelItem)c.Item1); if (c.Item2 != null) items.Add((ModelItem)c.Item2); }
+}
+doc.CurrentSelection.CopyFrom(items);
+if (B("colorize")) doc.Models.OverridePermanentColor(items, new Color(0.9, 0.1, 0.1));
+return R("items", items.Count);
+
+@@ navis_clash_auto_approve
+title: Clash: approve / resolve small clashes
+host: navisworks
+set: navisworks
+tx: false
+desc: Sets every clash of a test whose penetration is smaller than a tolerance (mm) to Approved (or another status) with a comment - removes nuisance clashes from the coordination list.
+arg: test | string! | Clash test
+arg: belowMm | number! | Penetration threshold in mm (absolute distance)
+arg: toStatus | string | Status (default Approved)
+arg: comment | string | Comment to add
+code:
+var data = ClashDoc().TestsData; dynamic t = Test(S("test")); int n = 0;
+var statusType = AppDomain.CurrentDomain.GetAssemblies().First(x => x.GetName().Name == "Autodesk.Navisworks.Clash").GetType("Autodesk.Navisworks.Api.Clash.ClashResultStatus");
+var to = Enum.Parse(statusType, S("toStatus", "Approved"), true);
+var all = new List<dynamic>(); foreach (dynamic c in t.Children) { if ((bool)c.IsGroup) foreach (dynamic r in c.Children) all.Add(r); else all.Add(c); }
+foreach (var r in all)
+{
+    if (Math.Abs((double)r.Distance) * ToMm >= N("belowMm")) continue;
+    data.TestsEditResultStatus(r, (dynamic)to);
+    if (Has("comment")) { var cc = new CommentCollection(); foreach (Comment old in r.Comments) cc.Add(old); cc.Add(new Comment(S("comment"), CommentStatus.New)); data.TestsEditResultComments(r, cc); }
+    n++;
+}
+return R("updated", n, "status", S("toStatus", "Approved"));
+
+@@ navis_clash_rename_by_location
+title: Clash: rename by level and grid
+host: navisworks
+set: navisworks
+tx: false
+desc: Renames clash results as "<level> | <grid> | <item A> x <item B>" from the active grid system - meaningful clash names for reports and BCF.
+arg: test | string! | Clash test
+code:
+var data = ClashDoc().TestsData; dynamic t = Test(S("test")); dynamic sys = ((dynamic)doc).Grids.ActiveSystem; int n = 0;
+var all = new List<dynamic>(); foreach (dynamic c in t.Children) { if ((bool)c.IsGroup) foreach (dynamic r in c.Children) all.Add(r); else all.Add(c); }
+foreach (var r in all)
+{
+    Point3D p = r.Center; string lvl = "?"; double best = double.MinValue;
+    try { foreach (dynamic l in sys.Levels) { double e = (double)l.Elevation; if (e <= p.Z + 1e-6 && e > best) { best = e; lvl = (string)l.DisplayName; } } } catch { }
+    string grid = "?"; try { dynamic gi = sys.ClosestIntersection(p); if (gi != null) grid = (string)gi.DisplayName; } catch { }
+    string a = r.Item1 == null ? "?" : ((ModelItem)r.Item1).DisplayName, b = r.Item2 == null ? "?" : ((ModelItem)r.Item2).DisplayName;
+    data.TestsEditDisplayName(r, lvl + " | " + grid + " | " + a + " x " + b); n++;
+}
+return R("renamed", n);
+
+@@ navis_timeliner_import_csv
+title: TimeLiner: create tasks from CSV
+host: navisworks
+set: navisworks
+tx: false
+desc: Creates TimeLiner tasks from a CSV with columns Name, Start, End[, Type][, Set] (dates ISO or local format). Tasks whose Set column names a saved selection/search set get it attached - quick 4D from any schedule export (Primavera, MS Project, Excel).
+arg: path | string! | CSV file
+arg: clearFirst | boolean | Delete existing tasks first
+arg: delimiter | string | Delimiter (default ,)
+code:
+dynamic tl = TimelinerDoc();
+if (B("clearFirst")) { try { tl.TasksClear(); } catch { Fail("Clearing tasks is not supported by this Navisworks version - delete them in TimeLiner or call without clearFirst."); } }
+var sets = new Dictionary<string, SelectionSet>(StringComparer.OrdinalIgnoreCase);
+Action<GroupItem> walk = null; walk = g => { foreach (SavedItem s in g.Children) { if (s is SelectionSet) sets[s.DisplayName] = (SelectionSet)s; else if (s is GroupItem) walk((GroupItem)s); } };
+walk(doc.SelectionSets.RootItem);
+var lines = System.IO.File.ReadAllLines(S("path")); var del = S("delimiter", ",")[0];
+var head = lines[0].Split(del).Select(h => h.Trim().Trim('"').ToLowerInvariant()).ToList();
+Func<string[], string, string> col = (row, name) => { int i = head.IndexOf(name); return i >= 0 && i < row.Length ? row[i].Trim().Trim('"') : null; };
+var tType = AppDomain.CurrentDomain.GetAssemblies().First(x => x.GetName().Name == "Autodesk.Navisworks.Timeliner").GetType("Autodesk.Navisworks.Api.Timeliner.TimelinerTask");
+int made = 0, linked = 0;
+foreach (var line in lines.Skip(1))
+{
+    if (string.IsNullOrWhiteSpace(line)) continue;
+    var row = line.Split(del);
+    dynamic task = Activator.CreateInstance(tType);
+    task.DisplayName = col(row, "name");
+    DateTime d; if (DateTime.TryParse(col(row, "start"), out d)) task.PlannedStartDate = d; if (DateTime.TryParse(col(row, "end"), out d)) task.PlannedEndDate = d;
+    try { task.SimulationTaskTypeName = col(row, "type") ?? "Construct"; } catch { }
+    SelectionSet ss; var setName = col(row, "set");
+    if (setName != null && sets.TryGetValue(setName, out ss)) { task.Selection.CopyFrom(new SelectionSource[] { doc.SelectionSets.CreateSelectionSource(ss) }); linked++; }
+    tl.TaskAddCopy(task); made++;
+}
+return R("tasks", made, "linkedToSets", linked);
+
+@@ navis_timeliner_export_csv
+title: TimeLiner: export tasks to CSV
+host: navisworks
+set: navisworks
+tx: false
+desc: Writes all TimeLiner tasks (hierarchy path, planned / actual dates, task type, attached set) to CSV.
+arg: path | string! | CSV file
+code:
+dynamic tl = TimelinerDoc(); var sb = new System.Text.StringBuilder(); sb.AppendLine("Path,Name,PlannedStart,PlannedEnd,ActualStart,ActualEnd,Type"); int n = 0;
+Func<object, string> f = v => v == null ? "" : (v is DateTime ? ((DateTime)v).ToString("yyyy-MM-dd") : v.ToString());
+Action<dynamic, string> visit = null;
+visit = (dynamic p, string path) =>
+{
+    foreach (dynamic t in p.Children)
+    {
+        string name = t.DisplayName; var full = path.Length == 0 ? name : path + " > " + name;
+        sb.AppendLine(string.Join(",", new[] { full, name, f(t.PlannedStartDate), f(t.PlannedEndDate), f(t.ActualStartDate), f(t.ActualEndDate), f(t.SimulationTaskTypeName) }.Select(x => "\"" + (x ?? "").Replace("\"", "\"\"") + "\"")));
+        n++; visit(t, full);
+    }
+};
+visit(tl.TasksRoot, "");
+System.IO.File.WriteAllText(S("path"), sb.ToString());
+return R("path", S("path"), "tasks", n);
+
+@@ navis_sets_from_levels
+title: Search sets per level
+host: navisworks
+set: navisworks
+tx: false
+desc: Creates one search set per distinct value of a level property (default Element/Level) inside a folder - the standard floor-by-floor set structure for clash tests and 4D.
+arg: category | string | Property category (default Element)
+arg: property | string | Property name (default Level)
+arg: folder | string | Set folder (default Levels)
+code:
+string cat = S("category", "Element"), prop = S("property", "Level"); var values = new SortedSet<string>();
+foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf) { var p = it.PropertyCategories.FindPropertyByDisplayName(cat, prop); if (p != null && p.Value != null) { var v = p.Value.ToDisplayString(); if (!string.IsNullOrWhiteSpace(v)) values.Add(v); } }
+var folder = new FolderItem(); folder.DisplayName = S("folder", "Levels"); doc.SelectionSets.AddCopy(folder);
+GroupItem target = doc.SelectionSets.RootItem.Children.OfType<GroupItem>().Last(g => g.DisplayName == folder.DisplayName);
+foreach (var v in values)
+{
+    var s = new Search(); s.Selection.SelectAll(); s.Locations = SearchLocations.DescendantsAndSelf;
+    s.SearchConditions.Add(SearchCondition.HasPropertyByDisplayName(cat, prop).EqualValue(VariantData.FromDisplayString(v)));
+    var set = new SelectionSet(s); set.DisplayName = v; doc.SelectionSets.InsertCopy(target, target.Children.Count, set);
+}
+return R("folder", folder.DisplayName, "sets", values.ToList());
+
+@@ navis_model_offset
+title: Move an appended model
+host: navisworks
+set: navisworks
+tx: true
+desc: Applies a translation (model units) to a whole appended model - fixes models that came in with wrong shared coordinates. reset=true removes the override.
+arg: model | string! | Model file name (contains)
+arg: offset | point | [dx, dy, dz]
+arg: reset | boolean | Reset the transform override
+code:
+Model m = doc.Models.Cast<Model>().FirstOrDefault(x => x.FileName.IndexOf(S("model"), StringComparison.OrdinalIgnoreCase) >= 0);
+if (m == null) Fail("Model not found.");
+var items = new ModelItemCollection(); items.Add(m.RootItem);
+if (B("reset")) { doc.Models.ResetPermanentTransform(items); return R("reset", m.FileName); }
+var o = BurakBim.Shared.Json.Vec(Raw("offset"));
+var tr = Transform3D.CreateTranslation(new Vector3D(o[0], o[1], o.Length > 2 ? o[2] : 0));
+doc.Models.OverridePermanentTransform(items, tr, true);
+return R("model", m.FileName, "offset", o);

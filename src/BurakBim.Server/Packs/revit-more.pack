@@ -1,0 +1,362 @@
+# BURAK BIM tool pack - Revit: worksharing, MEP routing, placement, areas, parts, links, families, audits
+
+@@ revit_reload_latest
+title: Reload latest (worksharing)
+host: revit
+tx: false
+desc: Reload Latest from the central model so the local copy has everyone's changes (no sync).
+code:
+if (!doc.IsWorkshared) Fail("The model is not workshared.");
+doc.ReloadLatest(new ReloadLatestOptions());
+return R("reloaded", doc.Title);
+
+@@ revit_relinquish_all
+title: Relinquish all (worksharing)
+host: revit
+tx: false
+desc: Relinquish all borrowed elements and worksets you own (without saving changes to central) - frees elements for the team.
+code:
+if (!doc.IsWorkshared) Fail("The model is not workshared.");
+WorksharingUtils.RelinquishOwnership(doc, new RelinquishOptions(true), new TransactWithCentralOptions());
+return R("relinquished", true);
+
+@@ revit_conduit_route
+title: Route conduit
+host: revit
+desc: Creates straight conduit runs through a polyline of points (mm) with a conduit type and diameter; elbows are added at the bends.
+arg: points | array! | [[x,y,z], ...] mm
+arg: type | string | Conduit type name (default: first)
+arg: diameterMm | number | Diameter
+arg: level | string | Reference level (default lowest)
+code:
+var lv = LvlArg(); var pts = A("points").Select(p => Pt(p)).ToList();
+var t = Has("type") ? TypeByName<Autodesk.Revit.DB.Electrical.ConduitType>(S("type")) : All<Autodesk.Revit.DB.Electrical.ConduitType>().First();
+var made = new List<Element>();
+for (int i = 0; i + 1 < pts.Count; i++)
+{
+    var c = Autodesk.Revit.DB.Electrical.Conduit.Create(doc, t.Id, pts[i], pts[i + 1], lv.Id);
+    if (Has("diameterMm")) c.get_Parameter(BuiltInParameter.RBS_CONDUIT_DIAMETER_PARAM).Set(Ft(N("diameterMm")));
+    made.Add(c);
+}
+doc.Regenerate();
+for (int i = 0; i + 1 < made.Count; i++)
+{
+    try
+    {
+        Connector a = null, b = null; double best = double.MaxValue;
+        foreach (Connector x in ((MEPCurve)made[i]).ConnectorManager.Connectors) foreach (Connector y in ((MEPCurve)made[i + 1]).ConnectorManager.Connectors) { var d = x.Origin.DistanceTo(y.Origin); if (d < best) { best = d; a = x; b = y; } }
+        doc.Create.NewElbowFitting(a, b);
+    }
+    catch { }
+}
+return R("conduits", IdList(made));
+
+@@ revit_cable_tray_route
+title: Route cable tray
+host: revit
+desc: Creates cable tray runs through a polyline of points (mm) with type, width and height; elbows at bends.
+arg: points | array! | [[x,y,z], ...] mm
+arg: type | string | Cable tray type name (default: first)
+arg: widthMm | number | Width
+arg: heightMm | number | Height
+arg: level | string | Reference level
+code:
+var lv = LvlArg(); var pts = A("points").Select(p => Pt(p)).ToList();
+var t = Has("type") ? TypeByName<Autodesk.Revit.DB.Electrical.CableTrayType>(S("type")) : All<Autodesk.Revit.DB.Electrical.CableTrayType>().First();
+var made = new List<Element>();
+for (int i = 0; i + 1 < pts.Count; i++)
+{
+    var c = Autodesk.Revit.DB.Electrical.CableTray.Create(doc, t.Id, pts[i], pts[i + 1], lv.Id);
+    if (Has("widthMm")) c.get_Parameter(BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM).Set(Ft(N("widthMm")));
+    if (Has("heightMm")) c.get_Parameter(BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM).Set(Ft(N("heightMm")));
+    made.Add(c);
+}
+doc.Regenerate();
+for (int i = 0; i + 1 < made.Count; i++)
+{
+    try
+    {
+        Connector a = null, b = null; double best = double.MaxValue;
+        foreach (Connector x in ((MEPCurve)made[i]).ConnectorManager.Connectors) foreach (Connector y in ((MEPCurve)made[i + 1]).ConnectorManager.Connectors) { var d = x.Origin.DistanceTo(y.Origin); if (d < best) { best = d; a = x; b = y; } }
+        doc.Create.NewElbowFitting(a, b);
+    }
+    catch { }
+}
+return R("trays", IdList(made));
+
+@@ revit_place_instances
+title: Place family instances at points
+host: revit
+desc: Places a family type (any category: furniture, equipment, fixtures, generic models, sprinklers, lights ...) at a list of points (mm) on a level, with rotation (deg) and optional parameter values.
+arg: type | string! | Family type ("Family : Type" or type name)
+arg: points | array! | [[x,y,z], ...] mm (z = offset from level)
+arg: level | string | Level (default lowest)
+arg: rotationDeg | number | Rotation about Z
+arg: parameters | object | Parameter values to set on each instance
+code:
+var sym = TypeByName<FamilySymbol>(S("type")); if (!sym.IsActive) { sym.Activate(); doc.Regenerate(); }
+var lv = LvlArg(); var made = new List<ElementId>();
+foreach (var p in A("points"))
+{
+    var pt = Pt(p);
+    var fi = doc.Create.NewFamilyInstance(new XYZ(pt.X, pt.Y, lv.Elevation + pt.Z), sym, lv, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
+    if (Has("rotationDeg")) ElementTransformUtils.RotateElement(doc, fi.Id, Line.CreateBound(new XYZ(pt.X, pt.Y, 0), new XYZ(pt.X, pt.Y, 1)), Rad(N("rotationDeg")));
+    var pars = O("parameters"); if (pars != null) foreach (var kv in pars) SetPrm(fi, kv.Key, kv.Value);
+    made.Add(fi.Id);
+}
+return R("placed", IdList(made));
+
+@@ revit_area_create
+title: Place areas in an area plan
+host: revit
+desc: Places Area elements at points (mm) in an area plan view (the area boundaries must exist), optionally naming them.
+arg: view | string! | Area plan view name
+arg: points | array! | [[x,y], ...] mm
+arg: names | strings | Area names (same order)
+code:
+var v = ViewArg() as ViewPlan; if (v == null || v.ViewType != ViewType.AreaPlan) Fail("Give an Area Plan view.");
+var names = SL("names"); var made = new List<ElementId>(); int i = 0;
+foreach (var p in A("points"))
+{
+    var pt = Pt(p); var a = doc.Create.NewArea(v, new UV(pt.X, pt.Y));
+    if (names != null && i < names.Count) a.Name = names[i];
+    made.Add(a.Id); i++;
+}
+return R("areas", IdList(made));
+
+@@ revit_area_boundaries
+title: Area boundary lines
+host: revit
+desc: Draws area boundary lines in an area plan through a closed polygon of points (mm).
+arg: view | string! | Area plan view name
+arg: points | array! | [[x,y], ...] mm (closed automatically)
+code:
+var v = ViewArg() as ViewPlan; if (v == null || v.ViewType != ViewType.AreaPlan) Fail("Give an Area Plan view.");
+var pts = A("points").Select(p => Pt(p)).ToList(); pts.Add(pts[0]);
+var sp = v.SketchPlane ?? SketchPlane.Create(doc, Plane.CreateByNormalAndOrigin(XYZ.BasisZ, new XYZ(0, 0, v.GenLevel.Elevation)));
+var made = new List<ElementId>();
+for (int i = 0; i + 1 < pts.Count; i++)
+{
+    var a = new XYZ(pts[i].X, pts[i].Y, v.GenLevel.Elevation); var b = new XYZ(pts[i + 1].X, pts[i + 1].Y, v.GenLevel.Elevation);
+    made.Add(doc.Create.NewAreaBoundaryLine(sp, Line.CreateBound(a, b), v).Id);
+}
+return R("lines", IdList(made));
+
+@@ revit_parts_create
+title: Create parts (layers to parts)
+host: revit
+desc: Divides walls / floors / roofs into Parts (one per layer) for construction modelling and quantity take-off per layer.
+arg: ids | ids | Host elements (omit = selection)
+code:
+var ids = ElemIds("ids").Where(id => PartUtils.AreElementsValidForCreateParts(doc, new List<ElementId> { id })).ToList();
+if (ids.Count == 0) Fail("None of the elements can be divided into parts.");
+PartUtils.CreateParts(doc, ids); doc.Regenerate();
+var parts = ids.SelectMany(id => PartUtils.GetAssociatedParts(doc, id, true, true)).ToList();
+return R("hosts", ids.Count, "parts", IdList(parts));
+
+@@ revit_dependent_views
+title: Create dependent views
+host: revit
+desc: Creates dependent views of a plan (one per scope box, or a given count) - the standard way to split large floors across sheets.
+arg: view | string! | Parent view name
+arg: scopeBoxes | strings | Scope box names (one dependent per box)
+arg: count | integer | Number of dependents when no scope boxes are given
+code:
+var v = ViewArg(); var made = new List<object>();
+var boxes = SL("scopeBoxes");
+if (boxes != null && boxes.Count > 0)
+{
+    foreach (var bn in boxes)
+    {
+        var box = OfCat(BuiltInCategory.OST_VolumeOfInterest).FirstOrDefault(b => b.Name == bn); if (box == null) continue;
+        var dv = doc.GetElement(v.Duplicate(ViewDuplicateOption.AsDependent)) as View;
+        dv.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP).Set(box.Id);
+        try { dv.Name = v.Name + " - " + bn; } catch { }
+        made.Add(R("id", IdOf(dv), "name", dv.Name));
+    }
+}
+else
+    for (int i = 0; i < I("count", 2); i++) { var dv = doc.GetElement(v.Duplicate(ViewDuplicateOption.AsDependent)) as View; made.Add(R("id", IdOf(dv), "name", dv.Name)); }
+return R("parent", v.Name, "dependents", made);
+
+@@ revit_find_by_ifc_guid
+title: Find elements by IFC GUID
+host: revit
+tx: false
+desc: Finds elements by IFC GlobalId (IfcGUID / IFC GUID parameters) - links BCF issues and IFC viewer comments back to Revit. Optionally selects them.
+arg: guids | strings! | IFC GlobalIds
+arg: select | boolean | Select them
+code:
+var want = new HashSet<string>(SL("guids"));
+var hits = new List<Element>();
+foreach (var e in Col().WhereElementIsNotElementType())
+{
+    var p = e.get_Parameter(BuiltInParameter.IFC_GUID) ?? Prm(e, "IfcGUID");
+    var v = p == null ? null : p.AsString();
+    if (v != null && want.Contains(v)) hits.Add(e);
+}
+if (B("select")) uidoc.Selection.SetElementIds(hits.Select(h => h.Id).ToList());
+return R("found", hits.Count, "elements", DescAll(hits));
+
+@@ revit_copy_from_link
+title: Copy elements from a linked model
+host: revit
+desc: Copies elements of given categories (e.g. Grids, Levels, Floors) from a Revit link into the host model with the link's transform - the usual way to bring grids/levels from the architect's model.
+arg: link | string! | Link instance name (contains)
+arg: categories | strings! | Category names, e.g. ["Grids","Levels"]
+code:
+var li = All<RevitLinkInstance>().FirstOrDefault(l => l.Name.IndexOf(S("link"), StringComparison.OrdinalIgnoreCase) >= 0);
+if (li == null) Fail("Link not found. Links: " + string.Join(", ", All<RevitLinkInstance>().Select(l => l.Name)));
+var ld = li.GetLinkDocument(); if (ld == null) Fail("The link is not loaded.");
+var ids = new List<ElementId>();
+foreach (var cn in SL("categories"))
+{
+    Category cat = null; foreach (Category c in ld.Settings.Categories) if (string.Equals(c.Name, cn, StringComparison.OrdinalIgnoreCase)) cat = c;
+    if (cat == null) continue;
+    ids.AddRange(new FilteredElementCollector(ld).OfCategoryId(cat.Id).WhereElementIsNotElementType().ToElementIds());
+}
+if (ids.Count == 0) Fail("No elements of those categories in the link.");
+var opts = new CopyPasteOptions(); opts.SetDuplicateTypeNamesHandler(new BurakBim.Bridge.Revit.UseDestinationTypes());
+var copied = ElementTransformUtils.CopyElements(ld, ids, doc, li.GetTotalTransform(), opts);
+return R("copied", copied.Count, "ids", IdList(copied));
+
+@@ revit_floor_opening
+title: Opening in a floor / roof / ceiling
+host: revit
+desc: Cuts a vertical opening through a floor, roof or ceiling with a rectangle (centre, width, depth in mm) or a polygon of points.
+arg: id | integer! | Host floor / roof / ceiling
+arg: center | point | Rectangle centre (mm)
+arg: widthMm | number | Rectangle width (X)
+arg: depthMm | number | Rectangle depth (Y)
+arg: points | array | Polygon [[x,y], ...] instead of a rectangle
+code:
+var host = El(I("id")); var z = 0.0;
+List<XYZ> pts;
+if (Has("points")) pts = A("points").Select(p => Pt(p)).ToList();
+else { var c = P("center"); double w = Ft(N("widthMm", 1000)) / 2, d = Ft(N("depthMm", 1000)) / 2; pts = new List<XYZ> { new XYZ(c.X - w, c.Y - d, z), new XYZ(c.X + w, c.Y - d, z), new XYZ(c.X + w, c.Y + d, z), new XYZ(c.X - w, c.Y + d, z) }; }
+var ca = new CurveArray();
+for (int i = 0; i < pts.Count; i++) ca.Append(Line.CreateBound(new XYZ(pts[i].X, pts[i].Y, 0), new XYZ(pts[(i + 1) % pts.Count].X, pts[(i + 1) % pts.Count].Y, 0)));
+var op = doc.Create.NewOpening(host, ca, true);
+return R("opening", IdOf(op));
+
+@@ revit_load_families_folder
+title: Load all families from a folder
+host: revit
+desc: Loads every .rfa in a folder (optionally recursive) into the project, overwriting existing families when asked - quick content setup from the company library.
+arg: folder | string! | Folder with .rfa files
+arg: recursive | boolean | Include sub-folders
+arg: overwrite | boolean | Overwrite existing families and their parameter values
+code:
+var files = System.IO.Directory.GetFiles(S("folder"), "*.rfa", B("recursive") ? System.IO.SearchOption.AllDirectories : System.IO.SearchOption.TopDirectoryOnly)
+    .Where(f => !System.Text.RegularExpressions.Regex.IsMatch(f, @"\.\d{4}\.rfa$")).ToList();
+var ok = new List<object>(); var skipped = new List<object>();
+foreach (var f in files)
+{
+    Family fam;
+    bool loaded = B("overwrite") ? doc.LoadFamily(f, OverwriteOptions(), out fam) : doc.LoadFamily(f, out fam);
+    if (loaded) ok.Add(System.IO.Path.GetFileNameWithoutExtension(f)); else skipped.Add(System.IO.Path.GetFileNameWithoutExtension(f));
+}
+return R("loaded", ok, "skippedOrExisting", skipped);
+
+@@ revit_export_all_schedules
+title: Export all schedules to CSV
+host: revit
+tx: false
+desc: Exports every schedule (or those whose name contains a filter) to CSV files in a folder.
+arg: folder | string! | Output folder
+arg: filter | string | Only schedules whose name contains this
+code:
+System.IO.Directory.CreateDirectory(S("folder")); var done = new List<object>();
+var opt = new ViewScheduleExportOptions { FieldDelimiter = ",", TextQualifier = ExportTextQualifier.DoubleQuote };
+foreach (var vs in All<ViewSchedule>().Where(v => !v.IsTemplate && !v.IsTitleblockRevisionSchedule && !v.IsInternalKeynoteSchedule && (!Has("filter") || v.Name.IndexOf(S("filter"), StringComparison.OrdinalIgnoreCase) >= 0)))
+{
+    var name = string.Join("_", vs.Name.Split(System.IO.Path.GetInvalidFileNameChars())) + ".csv";
+    try { vs.Export(S("folder"), name, opt); done.Add(name); } catch (Exception ex) { done.Add(name + " (failed: " + ex.Message + ")"); }
+}
+return R("folder", S("folder"), "files", done);
+
+@@ revit_view_templates_audit
+title: QA: views without templates
+host: revit
+tx: false
+desc: Views placed on sheets (or all printable views) that have no view template, and templates not used by any view - graphics consistency check.
+arg: onlyOnSheets | boolean | Only views placed on sheets (default true)
+code:
+var onSheet = new HashSet<ElementId>(All<Viewport>().Select(vp => vp.ViewId));
+var views = All<View>().Where(v => !v.IsTemplate && v.CanBePrinted && !(v is ViewSheet) && !(v is ViewSchedule) && (!B("onlyOnSheets", true) || onSheet.Contains(v.Id))).ToList();
+var noTpl = views.Where(v => v.ViewTemplateId == ElementId.InvalidElementId).Select(v => (object)R("id", IdOf(v), "name", v.Name, "type", v.ViewType.ToString())).ToList();
+var used = new HashSet<ElementId>(All<View>().Select(v => v.ViewTemplateId));
+var unused = All<View>().Where(v => v.IsTemplate && !used.Contains(v.Id)).Select(v => (object)v.Name).ToList();
+return R("viewsChecked", views.Count, "withoutTemplate", noTpl.Count, "views", noTpl, "unusedTemplates", unused);
+
+@@ revit_in_place_families
+title: QA: in-place families
+host: revit
+tx: false
+desc: In-place (model-in-place) families with category and instance count - usually against company BIM standards.
+code:
+var res = new List<object>();
+foreach (var f in All<Family>().Where(f => f.IsInPlace))
+{
+    var ids = f.GetFamilySymbolIds(); int n = 0;
+    foreach (var sid in ids) n += new FilteredElementCollector(doc).WherePasses(new FamilyInstanceFilter(doc, sid)).GetElementCount();
+    res.Add(R("family", f.Name, "category", f.FamilyCategory == null ? null : f.FamilyCategory.Name, "instances", n));
+}
+return R("count", res.Count, "families", res);
+
+@@ revit_grid_bubbles
+title: Grid / level bubbles in a view
+host: revit
+desc: Show or hide grid (and level) bubbles at end 0, end 1 or both ends in a view - drawing clean-up.
+arg: view | string | View (default active)
+arg: ends | string | start, end or both (default both)
+arg: show | boolean! | Show (true) or hide (false)
+arg: levels | boolean | Also levels (in sections / elevations)
+code:
+var v = ViewArg(); int n = 0;
+var els = ColView(v).OfClass(typeof(Grid)).Cast<DatumPlane>().ToList();
+if (B("levels")) els.AddRange(ColView(v).OfClass(typeof(Level)).Cast<DatumPlane>());
+foreach (var d in els)
+{
+    foreach (var end in new[] { DatumEnds.End0, DatumEnds.End1 })
+    {
+        if (S("ends", "both") == "start" && end != DatumEnds.End0) continue;
+        if (S("ends", "both") == "end" && end != DatumEnds.End1) continue;
+        try { if (B("show")) d.ShowBubbleInView(end, v); else d.HideBubbleInView(end, v); n++; } catch { }
+    }
+}
+return R("changed", n);
+
+@@ revit_dimension_overrides
+title: QA: overridden dimension values
+host: revit
+tx: false
+desc: Dimensions whose displayed value was overridden (fake dimensions) - a classic drawing-quality check.
+code:
+var res = new List<object>();
+foreach (Dimension d in All<Dimension>())
+{
+    if (d.NumberOfSegments == 0) { if (!string.IsNullOrEmpty(d.ValueOverride)) res.Add(R("id", IdOf(d), "view", Name(d.OwnerViewId), "value", d.ValueString, "override", d.ValueOverride)); }
+    else foreach (DimensionSegment s in d.Segments) if (!string.IsNullOrEmpty(s.ValueOverride)) res.Add(R("id", IdOf(d), "view", Name(d.OwnerViewId), "value", s.ValueString, "override", s.ValueOverride));
+}
+return R("count", res.Count, "dimensions", res);
+
+@@ revit_rooms_from_link
+title: Room information from a linked model
+host: revit
+tx: false
+desc: Lists rooms of a linked architectural model (number, name, level, area) and, for given host elements, which linked room contains them - typical for MEP models referencing architecture.
+arg: link | string! | Link instance name (contains)
+arg: ids | ids | Host elements to locate (optional)
+code:
+var li = All<RevitLinkInstance>().FirstOrDefault(l => l.Name.IndexOf(S("link"), StringComparison.OrdinalIgnoreCase) >= 0);
+if (li == null) Fail("Link not found."); var ld = li.GetLinkDocument(); if (ld == null) Fail("Link not loaded.");
+var rooms = new FilteredElementCollector(ld).OfCategory(BuiltInCategory.OST_Rooms).WhereElementIsNotElementType().OfType<Room>().Where(r => r.Area > 0).ToList();
+var inv = li.GetTotalTransform().Inverse; var located = new List<object>();
+foreach (var e in Elems("ids", false))
+{
+    var bb = e.get_BoundingBox(null); if (bb == null) continue;
+    var p = inv.OfPoint((bb.Min + bb.Max) / 2); var r = rooms.FirstOrDefault(x => x.IsPointInRoom(p));
+    located.Add(R("id", IdOf(e), "room", r == null ? null : r.Number + " " + r.Name));
+}
+return R("rooms", rooms.Select(r => (object)R("number", r.Number, "name", r.Name, "level", r.Level == null ? null : r.Level.Name, "areaM2", SqM(r.Area))).ToList(), "located", located);

@@ -1,0 +1,600 @@
+# BURAK BIM tool pack - Revit extras: inspector history, rooms/doors QA, sheets, view settings, global parameters, reference/scope, MEP, scan
+
+@@ revit_element_history
+title: Element history (who created / changed)
+host: revit
+tx: false
+desc: Workshared models: creator, last person who changed it, current owner and checkout status of elements - the core question of every BIM inspection ("who made this?").
+arg: ids | ids | Elements (omit = selection)
+code:
+if (!doc.IsWorkshared) Fail("The model is not workshared - Revit only records creator / last-changed-by in workshared models. Use inspector tools for AI-created stamps.");
+var res = new List<object>();
+foreach (var e in Elems("ids"))
+{
+    var t = WorksharingUtils.GetWorksharingTooltipInfo(doc, e.Id);
+    res.Add(R("id", IdOf(e), "name", e.Name, "category", e.Category == null ? null : e.Category.Name,
+        "creator", t.Creator, "lastChangedBy", t.LastChangedBy, "owner", t.Owner,
+        "checkout", WorksharingUtils.GetCheckoutStatus(doc, e.Id).ToString(),
+        "workset", doc.GetWorksetTable().GetWorkset(e.WorksetId).Name));
+}
+return res;
+
+@@ revit_element_bounding_boxes
+title: Element bounding boxes
+host: revit
+tx: false
+desc: Model bounding box (min/max/size in mm) and centre of elements.
+arg: ids | ids | Elements (omit = selection)
+code:
+var res = new List<object>();
+foreach (var e in Elems("ids"))
+{
+    var b = e.get_BoundingBox(null); if (b == null) { res.Add(R("id", IdOf(e), "bbox", null)); continue; }
+    res.Add(R("id", IdOf(e), "category", e.Category == null ? null : e.Category.Name,
+        "minMm", new[] { Mm(b.Min.X), Mm(b.Min.Y), Mm(b.Min.Z) }, "maxMm", new[] { Mm(b.Max.X), Mm(b.Max.Y), Mm(b.Max.Z) },
+        "sizeMm", new[] { Mm(b.Max.X - b.Min.X), Mm(b.Max.Y - b.Min.Y), Mm(b.Max.Z - b.Min.Z) },
+        "centreMm", new[] { Mm((b.Min.X + b.Max.X) / 2), Mm((b.Min.Y + b.Max.Y) / 2), Mm((b.Min.Z + b.Max.Z) / 2) }));
+}
+return res;
+
+@@ revit_nearby_elements
+title: Elements near an element / point
+host: revit
+tx: false
+desc: Elements whose bounding boxes are within a distance (mm) of an element or a point, optionally limited to categories - quick spatial query for inspectors.
+arg: id | integer | Reference element
+arg: point | point | Reference point (mm)
+arg: distanceMm | number | Search distance (default 500)
+arg: categories | strings | Category names
+arg: limit | integer | Max (default 200)
+code:
+XYZ mn, mx; var d = Ft(N("distanceMm", 500)); ElementId self = ElementId.InvalidElementId;
+if (Has("id")) { var e = El(I("id")); var b = e.get_BoundingBox(null); if (b == null) Fail("Element has no bounding box."); mn = b.Min; mx = b.Max; self = e.Id; }
+else { var p = P("point"); if (p == null) Fail("Give id or point."); mn = p; mx = p; }
+var ol = new Outline(new XYZ(mn.X - d, mn.Y - d, mn.Z - d), new XYZ(mx.X + d, mx.Y + d, mx.Z + d));
+var col = Col().WhereElementIsNotElementType().WherePasses(new BoundingBoxIntersectsFilter(ol));
+var cats = SL("categories");
+var els = col.Where(x => x.Id != self && x.Category != null && (cats == null || cats.Count == 0 || cats.Any(c => string.Equals(c, x.Category.Name, StringComparison.OrdinalIgnoreCase)))).ToList();
+return R("count", els.Count, "elements", DescAll(els, I("limit", 200)));
+
+@@ revit_find_by_parameter
+title: Find elements by parameter rule
+host: revit
+tx: false
+desc: Elements of a category whose parameter equals / contains / begins with / is greater or less than a value, or is empty - and optionally selects them.
+arg: category | string! | Category name
+arg: parameter | string! | Parameter name
+arg: op | string | equals (default), contains, begins, greater, less, empty, notempty
+arg: value | string | Value (numbers in display units: mm, m2, ...)
+arg: select | boolean | Select results
+code:
+var cat = Cat(S("category")); var op = S("op", "equals"); var v = S("value", "");
+var hits = new List<Element>();
+foreach (var e in Col().OfCategoryId(cat.Id).WhereElementIsNotElementType())
+{
+    string txt = PrmText(e, S("parameter"));
+    bool ok;
+    if (op == "empty") ok = string.IsNullOrWhiteSpace(txt);
+    else if (op == "notempty") ok = !string.IsNullOrWhiteSpace(txt);
+    else if (txt == null) ok = false;
+    else if (op == "contains") ok = txt.IndexOf(v, StringComparison.OrdinalIgnoreCase) >= 0;
+    else if (op == "begins") ok = txt.StartsWith(v, StringComparison.OrdinalIgnoreCase);
+    else if (op == "greater" || op == "less")
+    {
+        double a, b; var num = new string(txt.TakeWhile(ch => char.IsDigit(ch) || ch == '.' || ch == '-' || ch == ',').ToArray()).Replace(",", "");
+        ok = double.TryParse(num, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out a)
+          && double.TryParse(v, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out b) && (op == "greater" ? a > b : a < b);
+    }
+    else ok = string.Equals(txt, v, StringComparison.OrdinalIgnoreCase);
+    if (ok) hits.Add(e);
+}
+if (B("select")) uidoc.Selection.SetElementIds(hits.Select(h => h.Id).ToList());
+return R("count", hits.Count, "elements", DescAll(hits, 300));
+
+@@ revit_door_from_to_rooms
+title: Doors: from / to rooms
+host: revit
+tx: false
+desc: Every door with its From Room and To Room (phase of the view or last phase), host wall and fire rating - checks door numbering and egress.
+arg: phase | string | Phase name (default: last phase)
+code:
+Phase ph = null;
+foreach (Phase p in doc.Phases) { if (!Has("phase") || string.Equals(p.Name, S("phase"), StringComparison.OrdinalIgnoreCase)) ph = p; }
+var res = new List<object>();
+foreach (FamilyInstance d in Col().OfCategory(BuiltInCategory.OST_Doors).WhereElementIsNotElementType().OfType<FamilyInstance>())
+{
+    Room fr = null, to = null; try { fr = d.get_FromRoom(ph); to = d.get_ToRoom(ph); } catch { }
+    res.Add(R("id", IdOf(d), "mark", PrmText(d, "Mark"), "type", d.Symbol.Family.Name + " : " + d.Name, "level", Name(d.LevelId),
+        "from", fr == null ? null : fr.Number + " " + fr.Name, "to", to == null ? null : to.Number + " " + to.Name,
+        "host", d.Host == null ? null : d.Host.Name, "fireRating", PrmText(d, "Fire Rating")));
+}
+return R("phase", ph == null ? null : ph.Name, "doors", res);
+
+@@ revit_door_fire_rating_check
+title: QA: door vs wall fire rating
+host: revit
+tx: false
+desc: Doors whose Fire Rating is lower than / missing compared with the host wall type's Fire Rating (numeric minutes compared when possible).
+arg: parameter | string | Rating parameter name (default Fire Rating)
+code:
+var pn = S("parameter", "Fire Rating"); var res = new List<object>();
+Func<string, double> num = s => { if (string.IsNullOrWhiteSpace(s)) return 0; var m = System.Text.RegularExpressions.Regex.Match(s, @"\d+(\.\d+)?"); return m.Success ? double.Parse(m.Value, System.Globalization.CultureInfo.InvariantCulture) : 0; };
+foreach (FamilyInstance d in Col().OfCategory(BuiltInCategory.OST_Doors).WhereElementIsNotElementType().OfType<FamilyInstance>())
+{
+    var w = d.Host as Wall; if (w == null) continue;
+    var wr = PrmText(w.WallType, pn) ?? PrmText(w, pn); if (string.IsNullOrWhiteSpace(wr)) continue;
+    var dr = PrmText(d, pn) ?? PrmText(d.Symbol, pn);
+    if (string.IsNullOrWhiteSpace(dr) || num(dr) < num(wr))
+        res.Add(R("door", IdOf(d), "mark", PrmText(d, "Mark"), "doorRating", dr, "wall", IdOf(w), "wallType", w.WallType.Name, "wallRating", wr));
+}
+return R("issues", res.Count, "doors", res);
+
+@@ revit_room_finishes
+title: Room finishes schedule
+host: revit
+tx: false
+desc: Rooms with number, name, level, area, height and the finish parameters (Floor / Wall / Ceiling / Base Finish) - plus rooms missing finishes.
+arg: level | string | Only this level
+code:
+var rows = new List<object>(); int missing = 0;
+foreach (Room r in Col().OfCategory(BuiltInCategory.OST_Rooms).WhereElementIsNotElementType().OfType<Room>())
+{
+    if (r.Area <= 0) continue;
+    if (Has("level") && r.LevelId != LvlArg().Id) continue;
+    var f = PrmText(r, "Floor Finish"); var w = PrmText(r, "Wall Finish"); var c = PrmText(r, "Ceiling Finish"); var b = PrmText(r, "Base Finish");
+    bool miss = string.IsNullOrWhiteSpace(f) || string.IsNullOrWhiteSpace(w) || string.IsNullOrWhiteSpace(c); if (miss) missing++;
+    rows.Add(R("id", IdOf(r), "number", r.Number, "name", r.get_Parameter(BuiltInParameter.ROOM_NAME).AsString(), "level", Name(r.LevelId),
+        "areaM2", SqM(r.Area), "heightMm", Mm(r.UnboundedHeight), "floor", f, "wall", w, "ceiling", c, "base", b, "missingFinish", miss));
+}
+return R("rooms", rows.Count, "missingFinishes", missing, "list", rows);
+
+@@ revit_room_finishes_set
+title: Set room finishes
+host: revit
+desc: Write Floor / Wall / Ceiling / Base Finish to rooms (selection, ids, or all rooms with a given name).
+arg: ids | ids | Rooms (omit = selection unless roomName given)
+arg: roomName | string | All rooms with this name
+arg: floor | string | Floor finish
+arg: wall | string | Wall finish
+arg: ceiling | string | Ceiling finish
+arg: base | string | Base finish
+code:
+List<Element> rooms = Has("roomName")
+    ? OfCat(BuiltInCategory.OST_Rooms).Where(r => string.Equals(r.get_Parameter(BuiltInParameter.ROOM_NAME).AsString(), S("roomName"), StringComparison.OrdinalIgnoreCase)).ToList()
+    : Elems("ids");
+foreach (var r in rooms)
+{
+    if (Has("floor")) SetPrm(r, "Floor Finish", S("floor"));
+    if (Has("wall")) SetPrm(r, "Wall Finish", S("wall"));
+    if (Has("ceiling")) SetPrm(r, "Ceiling Finish", S("ceiling"));
+    if (Has("base")) SetPrm(r, "Base Finish", S("base"));
+}
+return R("rooms", rooms.Count);
+
+@@ revit_room_tag_all
+title: Tag all untagged rooms in a view
+host: revit
+desc: Places a room tag at the location point of every room visible in a plan view that has no tag yet.
+arg: view | string | Plan view (default active)
+arg: tagType | string | Room tag type name
+code:
+var v = ViewArg(); var tagged = new HashSet<ElementId>();
+foreach (RoomTag t in ColView(v).OfCategory(BuiltInCategory.OST_RoomTags).OfType<RoomTag>()) if (t.Room != null) tagged.Add(t.Room.Id);
+ElementId typeId = Has("tagType") ? TypeByName<FamilySymbol>(S("tagType"), BuiltInCategory.OST_RoomTags).Id : ElementId.InvalidElementId;
+var made = new List<ElementId>();
+foreach (Room r in ColView(v).OfCategory(BuiltInCategory.OST_Rooms).OfType<Room>())
+{
+    if (r.Area <= 0 || tagged.Contains(r.Id)) continue;
+    var lp = r.Location as LocationPoint; if (lp == null) continue;
+    var tag = doc.Create.NewRoomTag(new LinkElementId(r.Id), new UV(lp.Point.X, lp.Point.Y), v.Id);
+    if (tag != null) { if (typeId != ElementId.InvalidElementId) tag.ChangeTypeId(typeId); made.Add(tag.Id); }
+}
+return R("tagged", made.Count, "ids", IdList(made));
+
+@@ revit_ceiling_heights
+title: Ceiling heights report
+host: revit
+tx: false
+desc: Ceilings with type, level, height offset from level (mm) and area - flags ceilings below a minimum clear height.
+arg: minHeightMm | number | Flag ceilings lower than this
+code:
+var rows = new List<object>(); var minH = N("minHeightMm", 0);
+foreach (var c in OfCat(BuiltInCategory.OST_Ceilings))
+{
+    var h = c.get_Parameter(BuiltInParameter.CEILING_HEIGHTABOVELEVEL_PARAM); double hm = h == null ? 0 : Mm(h.AsDouble());
+    var a = c.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED);
+    rows.Add(R("id", IdOf(c), "type", c.Name, "level", Name(c.LevelId), "heightMm", hm, "areaM2", a == null ? 0 : SqM(a.AsDouble()), "belowMinimum", minH > 0 && hm < minH));
+}
+return R("count", rows.Count, "ceilings", rows);
+
+@@ revit_sheet_revision_matrix
+title: Sheets x revisions matrix
+host: revit
+tx: false
+desc: Which revisions appear on which sheet (clouds or manually added) - the revision schedule check before issue.
+code:
+var revs = Col().OfClass(typeof(Revision)).Cast<Revision>().OrderBy(r => r.SequenceNumber).ToList();
+var rows = new List<object>();
+foreach (var s in All<ViewSheet>().Where(s => !s.IsPlaceholder).OrderBy(s => s.SheetNumber))
+{
+    var on = new HashSet<ElementId>(s.GetAllRevisionIds());
+    rows.Add(R("sheet", s.SheetNumber, "name", s.Name, "current", Name(s.GetCurrentRevision()), "revisions", revs.Where(r => on.Contains(r.Id)).Select(r => (object)(r.RevisionNumber + " " + r.Description)).ToList()));
+}
+return R("revisions", revs.Select(r => (object)R("seq", r.SequenceNumber, "number", r.RevisionNumber, "date", r.RevisionDate, "description", r.Description, "issued", r.Issued)).ToList(), "sheets", rows);
+
+@@ revit_sheet_add_revision
+title: Add revision to sheets
+host: revit
+desc: Adds a revision (by sequence number or description) to the "Revisions on Sheet" of sheets (by number list or all).
+arg: revision | string! | Revision description or sequence number
+arg: sheets | strings | Sheet numbers (omit = all sheets)
+code:
+var rev = Col().OfClass(typeof(Revision)).Cast<Revision>().FirstOrDefault(r => r.SequenceNumber.ToString() == S("revision") || string.Equals(r.Description, S("revision"), StringComparison.OrdinalIgnoreCase));
+if (rev == null) Fail("Revision not found.");
+var nums = SL("sheets"); int n = 0;
+foreach (var s in All<ViewSheet>().Where(s => !s.IsPlaceholder && (nums == null || nums.Count == 0 || nums.Contains(s.SheetNumber))))
+{
+    var ids = s.GetAdditionalRevisionIds(); if (ids.Contains(rev.Id)) continue; ids.Add(rev.Id); s.SetAdditionalRevisionIds(ids); n++;
+}
+return R("sheets", n, "revision", rev.Description);
+
+@@ revit_titleblock_swap
+title: Swap title block type on sheets
+host: revit
+desc: Changes the title block on sheets to another family type (e.g. A1 -> A0) - all sheets or a sheet number list.
+arg: type | string! | Title block type name ("Family : Type" or type name)
+arg: sheets | strings | Sheet numbers (omit = all)
+code:
+var tb = TypeByName<FamilySymbol>(S("type"), BuiltInCategory.OST_TitleBlocks); var nums = SL("sheets"); int n = 0;
+foreach (var s in All<ViewSheet>().Where(s => nums == null || nums.Count == 0 || nums.Contains(s.SheetNumber)))
+    foreach (var t in ColView(s).OfCategory(BuiltInCategory.OST_TitleBlocks).WhereElementIsNotElementType()) { t.ChangeTypeId(tb.Id); n++; }
+return R("changed", n, "type", tb.Name);
+
+@@ revit_sheet_renumber
+title: Renumber / rename sheets (find & replace)
+host: revit
+desc: Find/replace or prefix/suffix on sheet numbers and/or sheet names. Dry run by default.
+arg: find | string | Text to find
+arg: replace | string | Replacement
+arg: prefix | string | Add prefix to numbers
+arg: field | string | number (default), name, both
+arg: apply | boolean | Write changes (default false = preview)
+code:
+var field = S("field", "number"); var res = new List<object>();
+foreach (var s in All<ViewSheet>().OrderBy(s => s.SheetNumber))
+{
+    string num = s.SheetNumber, nam = s.Name, nn = num, na = nam;
+    if (field != "name") { if (Has("find")) nn = nn.Replace(S("find"), S("replace", "")); if (Has("prefix")) nn = S("prefix") + nn; }
+    if (field != "number" && Has("find")) na = na.Replace(S("find"), S("replace", ""));
+    if (nn == num && na == nam) continue;
+    if (B("apply")) { if (nn != num) s.SheetNumber = nn; if (na != nam) s.Name = na; }
+    res.Add(R("from", num + " " + nam, "to", nn + " " + na));
+}
+return R("applied", B("apply"), "changes", res);
+
+@@ revit_views_rename_pattern
+title: Rename views (find & replace / prefix)
+host: revit
+desc: Batch rename views (optionally of a view type) with find/replace and prefix. Dry run by default.
+arg: viewType | string | FloorPlan, CeilingPlan, Section, Elevation, ThreeD, DraftingView, Legend, Schedule ...
+arg: find | string | Text to find
+arg: replace | string | Replacement
+arg: prefix | string | Prefix
+arg: apply | boolean | Write changes (default false)
+code:
+var res = new List<object>();
+foreach (var v in All<View>().Where(v => !v.IsTemplate && !(v is ViewSheet) && (!Has("viewType") || v.ViewType.ToString().Equals(S("viewType"), StringComparison.OrdinalIgnoreCase))))
+{
+    var n = v.Name; if (Has("find")) n = n.Replace(S("find"), S("replace", "")); if (Has("prefix")) n = S("prefix") + n;
+    if (n == v.Name) continue;
+    var from = v.Name; if (B("apply")) { try { v.Name = n; } catch (Exception ex) { res.Add(R("from", from, "error", ex.Message)); continue; } }
+    res.Add(R("from", from, "to", n));
+}
+return R("applied", B("apply"), "changes", res);
+
+@@ revit_view_graphics_set
+title: View scale / detail level / display style / discipline
+host: revit
+desc: Set scale, detail level (coarse/medium/fine), visual style (wireframe, hidden, shaded, consistent, realistic) and discipline on one or many views.
+arg: views | strings | View names (omit = active view)
+arg: scale | integer | e.g. 100 for 1:100
+arg: detail | string | coarse, medium, fine
+arg: style | string | wireframe, hidden, shaded, consistent, realistic
+arg: discipline | string | architectural, structural, mechanical, electrical, plumbing, coordination
+code:
+var names = SL("views"); var views = names == null || names.Count == 0 ? new List<View> { doc.ActiveView } : All<View>().Where(v => names.Contains(v.Name)).ToList();
+foreach (var v in views)
+{
+    if (Has("scale")) v.Scale = I("scale");
+    if (Has("detail")) v.DetailLevel = S("detail") == "coarse" ? ViewDetailLevel.Coarse : S("detail") == "medium" ? ViewDetailLevel.Medium : ViewDetailLevel.Fine;
+    if (Has("style")) { var st = S("style"); v.DisplayStyle = st == "wireframe" ? DisplayStyle.Wireframe : st == "hidden" ? DisplayStyle.HLR : st == "consistent" ? DisplayStyle.FlatColors : st == "realistic" ? DisplayStyle.Realistic : DisplayStyle.Shading; }
+    if (Has("discipline")) { var d = S("discipline"); v.Discipline = d == "structural" ? ViewDiscipline.Structural : d == "mechanical" ? ViewDiscipline.Mechanical : d == "electrical" ? ViewDiscipline.Electrical : d == "plumbing" ? ViewDiscipline.Plumbing : d == "coordination" ? ViewDiscipline.Coordination : ViewDiscipline.Architectural; }
+}
+return R("views", views.Select(v => (object)v.Name).ToList());
+
+@@ revit_view_phase_set
+title: View phase / phase filter
+host: revit
+desc: Set the phase and phase filter of views (e.g. "Existing" + "Show Previous + Demo").
+arg: views | strings | View names (omit = active view)
+arg: phase | string | Phase name
+arg: phaseFilter | string | Phase filter name
+code:
+var names = SL("views"); var views = names == null || names.Count == 0 ? new List<View> { doc.ActiveView } : All<View>().Where(v => names.Contains(v.Name)).ToList();
+ElementId ph = null, pf = null;
+if (Has("phase")) foreach (Phase p in doc.Phases) if (string.Equals(p.Name, S("phase"), StringComparison.OrdinalIgnoreCase)) ph = p.Id;
+if (Has("phaseFilter")) { var f = All<PhaseFilter>().FirstOrDefault(x => string.Equals(x.Name, S("phaseFilter"), StringComparison.OrdinalIgnoreCase)); if (f != null) pf = f.Id; }
+if (Has("phase") && ph == null) Fail("Phase not found.");
+if (Has("phaseFilter") && pf == null) Fail("Phase filter not found. Available: " + string.Join(", ", All<PhaseFilter>().Select(x => x.Name)));
+foreach (var v in views)
+{
+    if (ph != null) v.get_Parameter(BuiltInParameter.VIEW_PHASE).Set(ph);
+    if (pf != null) v.get_Parameter(BuiltInParameter.VIEW_PHASE_FILTER).Set(pf);
+}
+return R("views", views.Count);
+
+@@ revit_view_filters_copy
+title: Copy view filters between views
+host: revit
+desc: Copies filters with their visibility and graphic overrides from a source view (or template) to target views.
+arg: source | string! | Source view / template name
+arg: targets | strings! | Target view names
+code:
+var src = All<View>().FirstOrDefault(v => v.Name == S("source")); if (src == null) Fail("Source view not found.");
+int n = 0;
+foreach (var t in All<View>().Where(v => SL("targets").Contains(v.Name)))
+{
+    foreach (var f in src.GetFilters())
+    {
+        if (!t.IsFilterApplied(f)) t.AddFilter(f);
+        t.SetFilterOverrides(f, src.GetFilterOverrides(f)); t.SetFilterVisibility(f, src.GetFilterVisibility(f)); n++;
+    }
+}
+return R("filtersCopied", n);
+
+@@ revit_view_filters_in_view
+title: Filters applied to a view
+host: revit
+tx: false
+desc: Filters of a view with visibility, projection line / surface colours and halftone.
+arg: view | string | View (default active)
+code:
+var v = ViewArg(); var res = new List<object>();
+foreach (var f in v.GetFilters())
+{
+    var o = v.GetFilterOverrides(f);
+    res.Add(R("filter", Name(f), "visible", v.GetFilterVisibility(f), "halftone", o.Halftone,
+        "lineColor", o.ProjectionLineColor.IsValid ? o.ProjectionLineColor.Red + "," + o.ProjectionLineColor.Green + "," + o.ProjectionLineColor.Blue : null,
+        "surfaceColor", o.SurfaceForegroundPatternColor.IsValid ? o.SurfaceForegroundPatternColor.Red + "," + o.SurfaceForegroundPatternColor.Green + "," + o.SurfaceForegroundPatternColor.Blue : null,
+        "transparency", o.Transparency));
+}
+return R("view", v.Name, "template", Name(v.ViewTemplateId), "filters", res);
+
+@@ revit_global_parameters
+title: Global parameters
+host: revit
+desc: List global parameters with values, create a new one (length, number, text, yes/no, area) or set a value.
+arg: action | string! | list, create, set
+arg: name | string | Parameter name
+arg: kind | string | length (mm), number, text, yesno, area (create)
+arg: value | any | New value (length in mm)
+code:
+if (S("action") == "list")
+{
+    return GlobalParametersManager.GetAllGlobalParameters(doc).Select(id => doc.GetElement(id) as GlobalParameter).Where(g => g != null).Select(g =>
+    {
+        var v = g.GetValue(); object val = v is DoubleParameterValue ? (object)((DoubleParameterValue)v).Value : v is IntegerParameterValue ? (object)((IntegerParameterValue)v).Value : v is StringParameterValue ? ((StringParameterValue)v).Value : null;
+        return (object)R("name", g.Name, "id", IdOf(g), "value", val, "formula", g.IsReporting ? "(reporting)" : g.GetFormula());
+    }).ToList();
+}
+GlobalParameter gp;
+if (S("action") == "create")
+{
+    var k = S("kind", "length");
+    var spec = k == "number" ? SpecTypeId.Number : k == "text" ? SpecTypeId.String.Text : k == "yesno" ? SpecTypeId.Boolean.YesNo : k == "area" ? SpecTypeId.Area : SpecTypeId.Length;
+    gp = GlobalParameter.Create(doc, S("name"), spec);
+}
+else gp = doc.GetElement(GlobalParametersManager.FindByName(doc, S("name"))) as GlobalParameter;
+if (gp == null) Fail("Global parameter not found.");
+if (Has("value"))
+{
+    var raw = Raw("value");
+    if (raw is string) gp.SetValue(new StringParameterValue((string)raw));
+    else if (raw is bool) gp.SetValue(new IntegerParameterValue((bool)raw ? 1 : 0));
+    else { var d = Convert.ToDouble(raw); var dt = gp.GetDefinition().GetDataType(); gp.SetValue(new DoubleParameterValue(dt == SpecTypeId.Length ? Ft(d) : d)); }
+}
+return R("name", gp.Name, "id", IdOf(gp));
+
+@@ revit_reference_planes
+title: Reference planes
+host: revit
+desc: List reference planes or create one between two points (mm) in a view.
+arg: action | string! | list or create
+arg: start | point | Start (mm)
+arg: end | point | End (mm)
+arg: name | string | Name
+arg: view | string | View (default active)
+code:
+if (S("action") == "list")
+    return All<ReferencePlane>().Select(r => (object)R("id", IdOf(r), "name", r.Name, "bubble", Out(r.BubbleEnd), "free", Out(r.FreeEnd))).ToList();
+var v = ViewArg(); var a = P("start"); var b = P("end");
+var cut = v.ViewDirection.CrossProduct(b - a).IsZeroLength() ? XYZ.BasisZ : v.ViewDirection;
+var rp = doc.Create.NewReferencePlane(a, b, cut, v);
+if (Has("name")) rp.Name = S("name");
+return R("id", IdOf(rp));
+
+@@ revit_scope_boxes
+title: Scope boxes
+host: revit
+desc: List scope boxes (with extents) or assign one to views (Scope Box parameter).
+arg: action | string! | list or assign
+arg: name | string | Scope box name
+arg: views | strings | View names for assign
+code:
+var boxes = OfCat(BuiltInCategory.OST_VolumeOfInterest).ToList();
+if (S("action") == "list") return boxes.Select(b => { var bb = b.get_BoundingBox(null); return (object)R("id", IdOf(b), "name", b.Name, "minMm", bb == null ? null : new[] { Mm(bb.Min.X), Mm(bb.Min.Y), Mm(bb.Min.Z) }, "maxMm", bb == null ? null : new[] { Mm(bb.Max.X), Mm(bb.Max.Y), Mm(bb.Max.Z) }); }).ToList();
+var box = boxes.FirstOrDefault(b => b.Name == S("name")); if (box == null) Fail("Scope box not found.");
+int n = 0;
+foreach (var v in All<View>().Where(v => SL("views").Contains(v.Name))) { var p = v.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP); if (p != null && !p.IsReadOnly) { p.Set(box.Id); n++; } }
+return R("assigned", n);
+
+@@ revit_model_lines
+title: Model / detail lines from points
+host: revit
+desc: Draws model lines (on a level work plane) or detail lines (in a view) through a polyline of points in mm, optionally with a line style.
+arg: points | array! | [[x,y,z], ...] mm
+arg: kind | string | model (default) or detail
+arg: closed | boolean | Close the polyline
+arg: lineStyle | string | Line style name
+arg: view | string | View for detail lines (default active)
+code:
+var pts = A("points").Select(p => Pt(p)).ToList(); if (B("closed")) pts.Add(pts[0]);
+GraphicsStyle gs = null;
+if (Has("lineStyle")) { var lc = doc.Settings.Categories.get_Item(BuiltInCategory.OST_Lines); foreach (Category c in lc.SubCategories) if (string.Equals(c.Name, S("lineStyle"), StringComparison.OrdinalIgnoreCase)) gs = c.GetGraphicsStyle(GraphicsStyleType.Projection); }
+var made = new List<ElementId>();
+for (int i = 0; i + 1 < pts.Count; i++)
+{
+    var ln = Line.CreateBound(pts[i], pts[i + 1]); CurveElement ce;
+    if (S("kind") == "detail") ce = doc.Create.NewDetailCurve(ViewArg(), ln);
+    else { var sp = SketchPlane.Create(doc, Plane.CreateByNormalAndOrigin(XYZ.BasisZ, new XYZ(0, 0, pts[i].Z))); ce = doc.Create.NewModelCurve(ln, sp); }
+    if (gs != null) ce.LineStyle = gs; made.Add(ce.Id);
+}
+return R("created", IdList(made));
+
+@@ revit_lines_to_walls
+title: Convert lines to walls
+host: revit
+desc: Creates walls along selected model / detail lines (or CAD-traced lines) with a wall type, base level and height - fast massing from sketches or Scan-to-BIM traces.
+arg: ids | ids | Line elements (omit = selection)
+arg: wallType | string | Wall type name (default: first basic wall)
+arg: level | string | Base level (default: lowest)
+arg: heightMm | number | Height (default 3000)
+arg: deleteLines | boolean | Delete the source lines
+code:
+var lv = LvlArg(); var wt = Has("wallType") ? TypeByName<WallType>(S("wallType")) : All<WallType>().First(w => w.Kind == WallKind.Basic);
+var made = new List<ElementId>(); var src = new List<ElementId>();
+foreach (var e in Elems("ids"))
+{
+    var ce = e as CurveElement; if (ce == null) continue;
+    var c = ce.GeometryCurve; var flat = c is Line ? (Curve)Line.CreateBound(new XYZ(c.GetEndPoint(0).X, c.GetEndPoint(0).Y, lv.Elevation), new XYZ(c.GetEndPoint(1).X, c.GetEndPoint(1).Y, lv.Elevation)) : c;
+    var w = Wall.Create(doc, flat, wt.Id, lv.Id, Ft(N("heightMm", 3000)), 0, false, false); made.Add(w.Id); src.Add(e.Id);
+}
+if (B("deleteLines")) doc.Delete(src);
+return R("walls", IdList(made));
+
+@@ revit_workset_move
+title: Move elements to a workset
+host: revit
+desc: Moves elements to a user workset (by name) - fixes elements modelled on the wrong workset.
+arg: ids | ids | Elements (omit = selection)
+arg: workset | string! | Workset name
+code:
+if (!doc.IsWorkshared) Fail("Model is not workshared.");
+var ws = new FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset).FirstOrDefault(w => string.Equals(w.Name, S("workset"), StringComparison.OrdinalIgnoreCase));
+if (ws == null) Fail("Workset not found.");
+int n = 0, ro = 0;
+foreach (var e in Elems("ids")) { var p = e.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM); if (p != null && !p.IsReadOnly) { p.Set(ws.Id.IntegerValue); n++; } else ro++; }
+return R("moved", n, "readOnly", ro, "workset", ws.Name);
+
+@@ revit_pipe_slope_set
+title: Set pipe slope
+host: revit
+desc: Sets the slope (percent) of pipes, e.g. 1 % / 2 % for sanitary lines.
+arg: ids | ids | Pipes (omit = selection)
+arg: percent | number! | Slope in percent
+code:
+int n = 0;
+foreach (var e in Elems("ids")) { var p = e.get_Parameter(BuiltInParameter.RBS_PIPE_SLOPE); if (p != null && !p.IsReadOnly) { p.Set(N("percent") / 100.0); n++; } }
+return R("pipes", n, "slopePercent", N("percent"));
+
+@@ revit_space_airflow
+title: Spaces airflow / loads report
+host: revit
+tx: false
+desc: MEP spaces with area, volume, specified / calculated supply airflow, air changes and zone - HVAC design check.
+code:
+var res = new List<object>();
+foreach (var s in OfCat(BuiltInCategory.OST_MEPSpaces).OfType<Autodesk.Revit.DB.Mechanical.Space>())
+{
+    if (s.Area <= 0) continue;
+    res.Add(R("id", IdOf(s), "number", s.Number, "name", s.Name, "level", Name(s.LevelId), "areaM2", SqM(s.Area), "volumeM3", CuM(s.Volume),
+        "specifiedSupply", PrmText(s, "Specified Supply Airflow"), "calculatedSupply", PrmText(s, "Calculated Supply Airflow"),
+        "actualSupply", PrmText(s, "Actual Supply Airflow"), "airChanges", PrmText(s, "Air Changes per Hour"), "zone", s.Zone == null ? null : s.Zone.Name));
+}
+return R("spaces", res.Count, "list", res);
+
+@@ revit_point_clouds
+title: Point cloud instances
+host: revit
+tx: false
+desc: Linked point clouds (RCP/RCS) with type, path, position, scan count and bounding box - the starting point for Scan-to-BIM in Revit.
+code:
+var res = new List<object>();
+foreach (var pc in All<PointCloudInstance>())
+{
+    var t = doc.GetElement(pc.GetTypeId()) as PointCloudType; var bb = pc.get_BoundingBox(null);
+    res.Add(R("id", IdOf(pc), "name", pc.Name, "path", t == null ? null : t.GetPath(), "scans", pc.GetScans().Count,
+        "minMm", bb == null ? null : new[] { Mm(bb.Min.X), Mm(bb.Min.Y), Mm(bb.Min.Z) }, "maxMm", bb == null ? null : new[] { Mm(bb.Max.X), Mm(bb.Max.Y), Mm(bb.Max.Z) }));
+}
+return res;
+
+@@ revit_point_cloud_link
+title: Link a point cloud (RCP / RCS)
+host: revit
+desc: Links an Autodesk ReCap project (.rcp) or scan (.rcs) into the model, origin to origin or auto-positioned at the project origin.
+arg: path | string! | .rcp / .rcs file
+code:
+var t = PointCloudType.Create(doc, "rcp", S("path"));
+var pc = PointCloudInstance.Create(doc, t.Id, Transform.Identity);
+return R("id", IdOf(pc), "type", IdOf(t));
+
+@@ revit_family_instances_report
+title: Family instances by family / type
+host: revit
+tx: false
+desc: Loadable family instances counted by category, family and type, with host / level distribution - finds unexpected or generic families.
+arg: category | string | Only this category
+code:
+var res = new Dictionary<string, Dictionary<string, object>>();
+foreach (var fi in All<FamilyInstance>())
+{
+    if (Has("category") && (fi.Category == null || !string.Equals(fi.Category.Name, S("category"), StringComparison.OrdinalIgnoreCase))) continue;
+    var key = (fi.Category == null ? "?" : fi.Category.Name) + " | " + fi.Symbol.Family.Name + " : " + fi.Symbol.Name;
+    Dictionary<string, object> r; if (!res.TryGetValue(key, out r)) res[key] = r = R("count", 0, "levels", new Dictionary<string, object>());
+    r["count"] = (int)r["count"] + 1;
+    var lv = Name(fi.LevelId) ?? "(no level)"; var lvs = (Dictionary<string, object>)r["levels"]; object c; lvs[lv] = lvs.TryGetValue(lv, out c) ? (int)c + 1 : 1;
+}
+return res.OrderByDescending(kv => (int)kv.Value["count"]).Select(kv => (object)R("family", kv.Key, "count", kv.Value["count"], "levels", kv.Value["levels"])).ToList();
+
+@@ revit_keynotes_report
+title: Keynotes usage
+host: revit
+tx: false
+desc: Keynote values used by element types and instances (Keynote parameter) with counts, plus the keynote table path.
+code:
+var res = new Dictionary<string, int>();
+foreach (var e in Col().WhereElementIsNotElementType())
+{
+    if (e.Category == null) continue;
+    var t = doc.GetElement(e.GetTypeId());
+    var p = e.get_Parameter(BuiltInParameter.KEYNOTE_PARAM) ?? (t == null ? null : t.get_Parameter(BuiltInParameter.KEYNOTE_PARAM));
+    var v = p == null ? null : p.AsString(); if (string.IsNullOrWhiteSpace(v)) continue;
+    int c; res.TryGetValue(v, out c); res[v] = c + 1;
+}
+string table = null; try { var kt = KeynoteTable.GetKeynoteTable(doc); var er = kt.GetExternalFileReference(); table = ModelPathUtils.ConvertModelPathToUserVisiblePath(er.GetAbsolutePath()); } catch { }
+return R("keynoteTable", table, "keynotes", res.OrderBy(kv => kv.Key).Select(kv => (object)R("keynote", kv.Key, "count", kv.Value)).ToList());
+
+@@ revit_areas_report
+title: Area plans / areas by scheme
+host: revit
+tx: false
+desc: Areas grouped by area scheme (Gross Building, Rentable, ...) and level with totals in m2.
+code:
+var res = new List<object>(); var tot = new Dictionary<string, double>();
+foreach (var a in OfCat(BuiltInCategory.OST_Areas).OfType<Autodesk.Revit.DB.Area>())
+{
+    if (a.Area <= 0) continue;
+    var scheme = a.AreaScheme == null ? "?" : a.AreaScheme.Name; double t; tot.TryGetValue(scheme, out t); tot[scheme] = t + a.Area;
+    res.Add(R("id", IdOf(a), "scheme", scheme, "level", Name(a.LevelId), "number", a.Number, "name", a.Name, "areaM2", SqM(a.Area)));
+}
+return R("totalsM2", tot.ToDictionary(kv => kv.Key, kv => (object)SqM(kv.Value)), "areas", res);

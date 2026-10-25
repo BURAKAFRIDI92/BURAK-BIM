@@ -1,0 +1,414 @@
+# BURAK BIM tool pack - Navisworks Manage/Simulate 2022-2027: models, selection, search, properties, visibility, appearance, transforms
+# Items(): 'handles' argument, a 'search' argument {category, property, value, op}, or the current selection.
+
+@@ navis_models
+title: Appended models
+host: navisworks
+set: navisworks
+tx: false
+desc: Every appended model/file with source file, units, creator, item count at root.
+code:
+var r = new List<object>();
+foreach (Model m in doc.Models) r.Add(R("file", m.FileName, "source", m.SourceFileName, "units", m.Units.ToString(), "creator", m.Creator, "root", m.RootItem == null ? null : m.RootItem.DisplayName));
+return r;
+
+@@ navis_select_all
+title: Select all / none / invert
+host: navisworks
+set: navisworks
+tx: false
+desc: Select all, none, or invert the current selection.
+arg: mode | string! | all, none, invert
+code:
+var m = S("mode");
+if (m == "none") { doc.CurrentSelection.Clear(); return R("selected", 0); }
+var all = new ModelItemCollection(); foreach (ModelItem root in doc.Models.RootItems) all.AddRange(root.DescendantsAndSelf);
+if (m == "all") doc.CurrentSelection.CopyFrom(all);
+else { var cur = doc.CurrentSelection.SelectedItems; var inv = new ModelItemCollection(); foreach (ModelItem it in all) if (!cur.Contains(it) && it.HasGeometry) inv.Add(it); doc.CurrentSelection.CopyFrom(inv); }
+return R("selected", doc.CurrentSelection.SelectedItems.Count);
+
+@@ navis_select_by_property
+title: Select by property (advanced)
+host: navisworks
+set: navisworks
+tx: false
+desc: Find Items with several AND conditions, e.g. [{"category":"Element","property":"Category","value":"Walls"},{"category":"Element","property":"Level","value":"L1"}]. op: equals, contains, wildcard, defined, notequals, greater, less.
+arg: conditions | array! | List of {category, property, value, op}
+arg: select | boolean | Select results (default true)
+arg: limit | integer | Max listed (default 200)
+code:
+var s = new Search(); s.Selection.SelectAll(); s.Locations = SearchLocations.DescendantsAndSelf;
+foreach (var o in A("conditions").OfType<Dictionary<string, object>>())
+{
+    var cat = BurakBim.Shared.Json.Str(o, "category"); var prop = BurakBim.Shared.Json.Str(o, "property"); var val = BurakBim.Shared.Json.Str(o, "value"); var op = BurakBim.Shared.Json.Str(o, "op", val == null ? "defined" : "equals");
+    var c = SearchCondition.HasPropertyByDisplayName(cat, prop);
+    if (op == "equals") c = c.EqualValue(VariantData.FromDisplayString(val));
+    else if (op == "notequals") c = c.CompareWith(SearchConditionComparison.NotEqual, VariantData.FromDisplayString(val));
+    else if (op == "contains") c = c.DisplayStringContains(val);
+    else if (op == "wildcard") c = c.DisplayStringWildcard(val);
+    else if (op == "greater") c = c.CompareWith(SearchConditionComparison.GreaterThan, VariantData.FromDouble(double.Parse(val, System.Globalization.CultureInfo.InvariantCulture)));
+    else if (op == "less") c = c.CompareWith(SearchConditionComparison.LessThan, VariantData.FromDouble(double.Parse(val, System.Globalization.CultureInfo.InvariantCulture)));
+    if (op != "defined" && op != "greater" && op != "less") c = c.IgnoreStringValueCase();
+    s.SearchConditions.Add(c);
+}
+var items = s.FindAll(doc, false);
+if (B("select", true)) doc.CurrentSelection.CopyFrom(items);
+return R("count", items.Count, "items", DescAll(items, I("limit", 200)));
+
+@@ navis_select_by_class
+title: Select by item type / class
+host: navisworks
+set: navisworks
+tx: false
+desc: Select geometry items whose class (Item > Type) contains text, e.g. "Pipe", "Duct", "Solid", "Block".
+arg: classContains | string! | Class name contains
+code:
+var hits = new ModelItemCollection();
+foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf) if ((it.ClassDisplayName ?? "").IndexOf(S("classContains"), StringComparison.OrdinalIgnoreCase) >= 0) hits.Add(it);
+doc.CurrentSelection.CopyFrom(hits);
+return R("selected", hits.Count);
+
+@@ navis_select_same
+title: Select same name / type
+host: navisworks
+set: navisworks
+tx: false
+desc: Select all items with the same display name (or class) as the given/selected items - like Select Same.
+arg: handles | strings | Seed items (omit = selection)
+arg: by | string | name (default) or class
+code:
+ModelItemCollection seeds = Items(); var keys = new HashSet<string>(); foreach (ModelItem it in seeds) keys.Add(S("by", "name") == "class" ? it.ClassDisplayName : it.DisplayName);
+var hits = new ModelItemCollection();
+foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf) if (keys.Contains(S("by", "name") == "class" ? it.ClassDisplayName : it.DisplayName)) hits.Add(it);
+doc.CurrentSelection.CopyFrom(hits);
+return R("selected", hits.Count);
+
+@@ navis_select_in_box
+title: Select items inside a box
+host: navisworks
+set: navisworks
+tx: false
+desc: Select geometry whose bounding box intersects (or is inside) a box in model units.
+arg: min | point! | Box min [x,y,z] model units
+arg: max | point! | Box max
+arg: inside | boolean | Fully inside only
+code:
+var a = BurakBim.Shared.Json.Vec(Raw("min")); var b = BurakBim.Shared.Json.Vec(Raw("max"));
+var box = new BoundingBox3D(new Point3D(a[0], a[1], a[2]), new Point3D(b[0], b[1], b[2])); var hits = new ModelItemCollection();
+foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf)
+{
+    if (!it.HasGeometry) continue; var bb = it.BoundingBox(); if (bb == null || bb.IsEmpty) continue;
+    if (B("inside") ? box.Contains(bb) : box.Intersects(bb)) hits.Add(it);
+}
+doc.CurrentSelection.CopyFrom(hits);
+return R("selected", hits.Count);
+
+@@ navis_property_values
+title: Distinct property values
+host: navisworks
+set: navisworks
+tx: false
+desc: All distinct values (with counts) of a property across the model - e.g. Element/Category, Item/Layer, Element/Level, Material.
+arg: category | string! | Property category (tab)
+arg: property | string! | Property name
+arg: limit | integer | Max distinct values (default 300)
+code:
+var counts = new Dictionary<string, int>();
+foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf)
+{
+    var p = it.PropertyCategories.FindPropertyByDisplayName(S("category"), S("property")); if (p == null) continue;
+    var v = p.Value.ToDisplayString(); counts[v] = counts.ContainsKey(v) ? counts[v] + 1 : 1;
+}
+return counts.OrderByDescending(k => k.Value).Take(I("limit", 300)).ToDictionary(k => k.Key, k => (object)k.Value);
+
+@@ navis_property_tabs
+title: Property tabs & names
+host: navisworks
+set: navisworks
+tx: false
+desc: Every property category (tab) and property name present on the selected items - to know what you can search, colour or report on.
+arg: handles | strings | Items (omit = selection)
+code:
+var r = new Dictionary<string, object>();
+foreach (ModelItem it in (ModelItemCollection)Items())
+  foreach (PropertyCategory c in it.PropertyCategories)
+  {
+      var list = r.ContainsKey(c.DisplayName) ? (List<object>)r[c.DisplayName] : new List<object>();
+      foreach (DataProperty p in c.Properties) if (!list.Contains(p.DisplayName)) list.Add(p.DisplayName);
+      r[c.DisplayName] = list;
+  }
+return r;
+
+@@ navis_item_info
+title: Item details
+host: navisworks
+set: navisworks
+tx: false
+desc: Path, class, GUID, model file, bounding box (model units), hidden state and child count of items.
+arg: handles | strings | Items (omit = selection)
+code:
+var r = new List<object>();
+foreach (ModelItem it in (ModelItemCollection)Items())
+{
+    var bb = it.BoundingBox();
+    r.Add(R("$h", Keep(it), "name", it.DisplayName, "class", it.ClassDisplayName, "path", PathOf(it), "guid", it.InstanceGuid.ToString(), "hidden", it.IsHidden,
+       "children", it.Children.Count(), "model", it.Model == null ? null : it.Model.FileName,
+       "bboxMin", bb == null || bb.IsEmpty ? null : new List<object> { bb.Min.X, bb.Min.Y, bb.Min.Z }, "bboxMax", bb == null || bb.IsEmpty ? null : new List<object> { bb.Max.X, bb.Max.Y, bb.Max.Z }));
+    if (r.Count >= 200) break;
+}
+return r;
+
+@@ navis_hide_unselected
+title: Hide unselected
+host: navisworks
+set: navisworks
+tx: false
+desc: Hide everything except the selection (like Hide Unselected).
+code:
+var sel = doc.CurrentSelection.SelectedItems; var keep = new ModelItemCollection();
+foreach (ModelItem it in sel) { keep.AddRange(it.AncestorsAndSelf); keep.AddRange(it.Descendants); }
+var hide = new ModelItemCollection();
+foreach (ModelItem it in keep) if (it.Parent != null) foreach (ModelItem sib in it.Parent.Children) if (!keep.Contains(sib)) hide.Add(sib);
+foreach (ModelItem root in doc.Models.RootItems) if (!keep.Contains(root)) hide.Add(root);
+doc.Models.ResetAllHidden(); doc.Models.SetHidden(hide, true);
+return R("hiddenBranches", hide.Count);
+
+@@ navis_hidden_items
+title: Hidden items
+host: navisworks
+set: navisworks
+tx: false
+desc: Items currently hidden (top-most hidden nodes).
+code:
+var r = new List<object>();
+foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf) { if (it.IsHidden && (it.Parent == null || !it.Parent.IsHidden)) r.Add(Desc(it)); if (r.Count > 500) break; }
+return R("count", r.Count, "items", r);
+
+@@ navis_color
+title: Override color / transparency
+host: navisworks
+set: navisworks
+tx: false
+desc: Permanently override color (#RRGGBB or [r,g,b] 0-255) and/or transparency (0-100) of items.
+arg: handles | strings | Items (omit = selection)
+arg: search | object | Or a property search
+arg: color | any | Color
+arg: transparency | integer | 0-100
+arg: temporary | boolean | Temporary override instead of permanent
+code:
+ModelItemCollection items = Items();
+if (Has("color"))
+{
+    double r, g, b; var cv = Raw("color") as string;
+    if (cv != null && cv.StartsWith("#")) { r = Convert.ToInt32(cv.Substring(1, 2), 16) / 255.0; g = Convert.ToInt32(cv.Substring(3, 2), 16) / 255.0; b = Convert.ToInt32(cv.Substring(5, 2), 16) / 255.0; }
+    else { var a = BurakBim.Shared.Json.Vec(Raw("color")); r = a[0] / 255.0; g = a[1] / 255.0; b = a[2] / 255.0; }
+    if (B("temporary")) doc.Models.OverrideTemporaryColor(items, new Color(r, g, b)); else doc.Models.OverridePermanentColor(items, new Color(r, g, b));
+}
+if (Has("transparency")) { if (B("temporary")) doc.Models.OverrideTemporaryTransparency(items, I("transparency") / 100.0); else doc.Models.OverridePermanentTransparency(items, I("transparency") / 100.0); }
+return R("items", items.Count);
+
+@@ navis_reset_appearance
+title: Reset appearance
+host: navisworks
+set: navisworks
+tx: false
+desc: Reset color/transparency overrides for items, or all permanent/temporary overrides in the model.
+arg: handles | strings | Items (omit with all=true)
+arg: all | boolean | Reset every override in the model
+code:
+if (B("all")) { doc.Models.ResetAllPermanentMaterials(); doc.Models.ResetAllTemporaryMaterials(); return R("reset", "all"); }
+ModelItemCollection items = Items(); doc.Models.ResetPermanentMaterials(items); return R("reset", items.Count);
+
+@@ navis_color_by_property
+title: Color by property value
+host: navisworks
+set: navisworks
+tx: false
+desc: Give each distinct value of a property its own color (e.g. Element/Category, Element/Level, Item/Layer, System Name) - instant appearance profile.
+arg: category | string! | Property tab
+arg: property | string! | Property
+code:
+var palette = new[] { "e6194b", "3cb44b", "4363d8", "f58231", "911eb4", "42d4f4", "f032e6", "bfef45", "469990", "9a6324", "800000", "808000", "000075", "fabed4", "dcbeff", "aaffc3" };
+var groups = new Dictionary<string, ModelItemCollection>();
+foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf)
+{
+    if (!it.HasGeometry) continue; var p = it.PropertyCategories.FindPropertyByDisplayName(S("category"), S("property"));
+    var v = p == null ? null : p.Value.ToDisplayString(); if (v == null) continue;
+    if (!groups.ContainsKey(v)) groups[v] = new ModelItemCollection(); groups[v].Add(it);
+}
+var legend = new Dictionary<string, object>(); int i = 0;
+foreach (var kv in groups.OrderByDescending(x => x.Value.Count))
+{
+    var hex = palette[i++ % palette.Length];
+    doc.Models.OverridePermanentColor(kv.Value, new Color(Convert.ToInt32(hex.Substring(0, 2), 16) / 255.0, Convert.ToInt32(hex.Substring(2, 2), 16) / 255.0, Convert.ToInt32(hex.Substring(4, 2), 16) / 255.0));
+    legend[kv.Key] = R("color", "#" + hex, "items", kv.Value.Count);
+}
+return legend;
+
+@@ navis_transform
+title: Move / rotate items (override transform)
+host: navisworks
+set: navisworks
+tx: false
+desc: Translate (model units) and/or rotate (degrees about Z) items with an override transform - e.g. fix a misaligned model. reset=true restores.
+arg: handles | strings | Items (omit = selection)
+arg: move | point | Translation [dx,dy,dz]
+arg: rotateDeg | number | Rotation about Z through the items' centre
+arg: reset | boolean | Reset transforms
+code:
+ModelItemCollection items = Items();
+if (B("reset")) { doc.Models.ResetPermanentTransform(items); return R("reset", items.Count); }
+var m = BurakBim.Shared.Json.Vec(Raw("move")) ?? new double[] { 0, 0, 0 };
+var t = new Transform3D(new Rotation3D(new UnitVector3D(0, 0, 1), N("rotateDeg") * Math.PI / 180), new Vector3D(m[0], m[1], m[2]));
+doc.Models.OverridePermanentTransform(items, t, true);
+return R("transformed", items.Count);
+
+@@ navis_bounding_box
+title: Overall extents
+host: navisworks
+set: navisworks
+tx: false
+desc: Bounding box and size (model units and mm) of items or of the whole model.
+arg: handles | strings | Items (omit = whole model)
+code:
+BoundingBox3D bb = Has("handles") || doc.CurrentSelection.SelectedItems.Count > 0 ? ((ModelItemCollection)Items()).BoundingBox() : doc.GetBoundingBox(false);
+return R("min", new List<object> { bb.Min.X, bb.Min.Y, bb.Min.Z }, "max", new List<object> { bb.Max.X, bb.Max.Y, bb.Max.Z }, "sizeMm", new List<object> { Math.Round(bb.Size.X * ToMm), Math.Round(bb.Size.Y * ToMm), Math.Round(bb.Size.Z * ToMm) }, "units", doc.Units.ToString());
+
+@@ navis_measure
+title: Measure between items
+host: navisworks
+set: navisworks
+tx: false
+desc: Centre-to-centre distance, clear gap and dx/dy/dz between two items (in mm and model units).
+arg: a | string! | Handle of item A
+arg: b | string! | Handle of item B
+code:
+var ia = (ModelItem)FromHandle(S("a")); var ib = (ModelItem)FromHandle(S("b")); var ba = ia.BoundingBox(); var bb = ib.BoundingBox();
+var ca = ba.Center; var cb = bb.Center;
+double dx = Math.Max(0, Math.Max(ba.Min.X - bb.Max.X, bb.Min.X - ba.Max.X)), dy = Math.Max(0, Math.Max(ba.Min.Y - bb.Max.Y, bb.Min.Y - ba.Max.Y)), dz = Math.Max(0, Math.Max(ba.Min.Z - bb.Max.Z, bb.Min.Z - ba.Max.Z));
+var cc = Math.Sqrt(Math.Pow(cb.X - ca.X, 2) + Math.Pow(cb.Y - ca.Y, 2) + Math.Pow(cb.Z - ca.Z, 2)); var gap = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+return R("centerToCenterMm", Math.Round(cc * ToMm, 1), "gapMm", Math.Round(gap * ToMm, 1), "dzMm", Math.Round((cb.Z - ca.Z) * ToMm, 1));
+
+@@ navis_quantities
+title: Quantities by property
+host: navisworks
+set: navisworks
+tx: false
+desc: Count of geometry items and sum of a numeric property (e.g. Element/Volume, Element/Area, Element/Length) grouped by another property (e.g. Element/Category) - quick takeoff.
+arg: groupCategory | string! | Group by: property tab
+arg: groupProperty | string! | Group by: property
+arg: sumCategory | string | Sum: property tab
+arg: sumProperty | string | Sum: property
+code:
+var res = new Dictionary<string, double[]>();
+foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf)
+{
+    var g = it.PropertyCategories.FindPropertyByDisplayName(S("groupCategory"), S("groupProperty")); if (g == null) continue;
+    var k = g.Value.ToDisplayString(); if (!res.ContainsKey(k)) res[k] = new double[2]; res[k][0]++;
+    if (Has("sumProperty")) { var sp = it.PropertyCategories.FindPropertyByDisplayName(S("sumCategory"), S("sumProperty")); if (sp != null) { try { res[k][1] += sp.Value.IsDouble ? sp.Value.ToDouble() : sp.Value.IsDoubleVolume ? sp.Value.ToDoubleVolume() : sp.Value.IsDoubleArea ? sp.Value.ToDoubleArea() : sp.Value.IsDoubleLength ? sp.Value.ToDoubleLength() : 0; } catch { } } }
+}
+return res.OrderBy(k => k.Key).ToDictionary(k => k.Key, k => (object)R("count", (int)k.Value[0], "sum", Math.Round(k.Value[1], 4)));
+
+@@ navis_add_custom_property
+title: Add custom properties (user data tab)
+host: navisworks
+set: navisworks
+tx: false
+desc: Add or update a custom property tab with name/value pairs on items (COM API user-defined properties) - e.g. status, inspector, package, cost code.
+arg: handles | strings | Items (omit = selection)
+arg: tab | string! | Tab name, e.g. "BURAK BIM"
+arg: values | object! | {"Status":"Approved","Inspector":"Ali"}
+code:
+var bridge = AppDomain.CurrentDomain.GetAssemblies().First(a => a.GetName().Name == "Autodesk.Navisworks.ComApi").GetType("Autodesk.Navisworks.Api.ComApi.ComApiBridge");
+var interop = AppDomain.CurrentDomain.GetAssemblies().First(a => a.GetName().Name == "Autodesk.Navisworks.Interop.ComApi");
+var objType = interop.GetType("Autodesk.Navisworks.Api.Interop.ComApi.nwEObjectType");
+dynamic state = bridge.GetProperty("State").GetValue(null, null); int n = 0;
+foreach (ModelItem it in (ModelItemCollection)Items())
+{
+    dynamic path = bridge.GetMethod("ToInwOaPath").Invoke(null, new object[] { it });
+    dynamic node = state.GetGUIPropertyNode(path, true);
+    dynamic vec = state.ObjectFactory(Enum.Parse(objType, "eObjectType_nwOaPropertyVec"), null, null);
+    foreach (var kv in O("values"))
+    {
+        dynamic prop = state.ObjectFactory(Enum.Parse(objType, "eObjectType_nwOaProperty"), null, null);
+        prop.name = kv.Key.Replace(" ", "_"); prop.UserName = kv.Key; prop.value = Convert.ToString(kv.Value);
+        vec.Properties().Add(prop);
+    }
+    int index = 0; int i = 1;
+    foreach (dynamic attr in node.GUIAttributes()) { if (attr.UserDefined && (string)attr.ClassUserName == S("tab")) { index = i; break; } if (attr.UserDefined) i++; }
+    node.SetUserDefined(index, S("tab"), S("tab").Replace(" ", "_"), vec); n++;
+}
+return R("updated", n, "tab", S("tab"));
+
+@@ navis_tree_search_name
+title: Find items by name
+host: navisworks
+set: navisworks
+tx: false
+desc: Find items whose display name contains text (selection tree search) and optionally select them.
+arg: text | string! | Name contains
+arg: select | boolean | Select (default true)
+arg: limit | integer | Max listed
+code:
+var hits = new ModelItemCollection();
+foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf) if ((it.DisplayName ?? "").IndexOf(S("text"), StringComparison.OrdinalIgnoreCase) >= 0) hits.Add(it);
+if (B("select", true)) doc.CurrentSelection.CopyFrom(hits);
+return R("count", hits.Count, "items", DescAll(hits, I("limit", 100)));
+
+@@ navis_layers
+title: Layers / levels of the model
+host: navisworks
+set: navisworks
+tx: false
+desc: Second-level nodes per model (layers in DWG/NWC, levels in Revit exports) with child counts.
+code:
+var r = new Dictionary<string, object>();
+foreach (ModelItem root in doc.Models.RootItems) r[root.DisplayName] = root.Children.Select(c => (object)R("$h", Keep(c), "name", c.DisplayName, "children", c.Children.Count(), "hidden", c.IsHidden)).ToList();
+return r;
+
+@@ navis_geometry_stats
+title: Geometry statistics
+host: navisworks
+set: navisworks
+tx: false
+desc: Number of items, geometry items, models and total extents - model weight check.
+code:
+int items = 0, geo = 0; foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf) { items++; if (it.HasGeometry) geo++; }
+var bb = doc.GetBoundingBox(false);
+return R("models", doc.Models.Count, "items", items, "geometryItems", geo, "sizeM", new List<object> { Math.Round(bb.Size.X * ToMm / 1000, 2), Math.Round(bb.Size.Y * ToMm / 1000, 2), Math.Round(bb.Size.Z * ToMm / 1000, 2) });
+
+@@ navis_required
+title: Make items required / unrequired
+host: navisworks
+set: navisworks
+tx: false
+desc: Mark items as required (always drawn while navigating) or not.
+arg: handles | strings | Items (omit = selection)
+arg: required | boolean! | Required
+code:
+ModelItemCollection items = Items(); doc.Models.SetRequired(items, B("required")); return R("items", items.Count);
+
+@@ navis_file_units
+title: Model units & file options
+host: navisworks
+set: navisworks
+tx: false
+desc: Document units, file name, title, current file version/state.
+code:
+return R("units", doc.Units.ToString(), "file", doc.FileName, "title", doc.Title, "isClear", doc.IsClear, "models", doc.Models.Count);
+
+@@ navis_publish_nwd
+title: Publish NWD
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Publish the current document to an NWD (title, author, comments, optional password protection off).
+arg: path | string! | Output .nwd path
+arg: title | string | Title
+arg: author | string | Author
+arg: comments | string | Comments
+code:
+var pp = new PublishProperties { Title = S("title", doc.Title), Author = S("author", "BURAK BIM"), Comments = S("comments", "") };
+doc.PublishFile(S("path"), pp);
+return R("published", S("path"));

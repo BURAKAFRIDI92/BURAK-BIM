@@ -1,0 +1,636 @@
+# BURAK BIM tool pack - Navisworks Manage/Simulate 2022-2027: model QA, data export, grids, plugins/exporters, appearance, file ops
+# Uncertain API members are called late-bound (dynamic) so one pack fits every Navisworks year.
+
+@@ navis_qa_missing_property
+title: QA: items missing a property
+host: navisworks
+set: navisworks
+tx: false
+desc: Geometry items (in scope) that do NOT have a property, or have it empty - e.g. elements without "Element/Level" or "Identity Data/Mark". Optionally selects them.
+arg: category | string! | Property category (tab), e.g. Element
+arg: property | string! | Property name
+arg: select | boolean | Select the offending items (default true)
+arg: limit | integer | Max listed (default 200)
+code:
+var scope = Items(); var src = new List<ModelItem>();
+if (scope.Count > 0 && !Has("search")) { foreach (ModelItem it in scope) foreach (ModelItem d in it.DescendantsAndSelf) if (d.HasGeometry) src.Add(d); }
+else foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem d in root.DescendantsAndSelf) if (d.HasGeometry) src.Add(d);
+var bad = new ModelItemCollection();
+foreach (var it in src)
+{
+    var p = it.PropertyCategories.FindPropertyByDisplayName(S("category"), S("property"));
+    if (p == null || p.Value == null || p.Value.IsNone || string.IsNullOrWhiteSpace(p.Value.ToDisplayString())) bad.Add(it);
+}
+if (B("select", true)) doc.CurrentSelection.CopyFrom(bad);
+return R("checked", src.Count, "missing", bad.Count, "items", DescAll(bad, I("limit", 200)));
+
+@@ navis_qa_duplicates
+title: QA: duplicate / overlapping items
+host: navisworks
+set: navisworks
+tx: false
+desc: Geometry items with the same class and an identical bounding box (within tolerance) - typical double-modelled or double-appended elements.
+arg: tolerance | number | Bounding-box tolerance in model units (default 0.001)
+arg: select | boolean | Select the duplicates (default true)
+arg: limit | integer | Max groups listed (default 100)
+code:
+var tol = N("tolerance", 0.001); var groups = new Dictionary<string, List<ModelItem>>();
+Func<double, long> q = v => (long)Math.Round(v / tol);
+foreach (ModelItem root in doc.Models.RootItems)
+    foreach (ModelItem it in root.DescendantsAndSelf)
+    {
+        if (!it.HasGeometry) continue;
+        var b = it.BoundingBox(); if (b == null || b.IsEmpty) continue;
+        var key = it.ClassDisplayName + "|" + q(b.Min.X) + "," + q(b.Min.Y) + "," + q(b.Min.Z) + "|" + q(b.Max.X) + "," + q(b.Max.Y) + "," + q(b.Max.Z);
+        List<ModelItem> l; if (!groups.TryGetValue(key, out l)) groups[key] = l = new List<ModelItem>(); l.Add(it);
+    }
+var dup = groups.Values.Where(g => g.Count > 1).ToList();
+var sel = new ModelItemCollection(); foreach (var g in dup) foreach (var it in g.Skip(1)) sel.Add(it);
+if (B("select", true)) doc.CurrentSelection.CopyFrom(sel);
+return R("groups", dup.Count, "extraItems", sel.Count, "list", dup.Take(I("limit", 100)).Select(g => (object)R("class", g[0].ClassDisplayName, "count", g.Count, "items", DescAll(g, 10))).ToList());
+
+@@ navis_qa_property_stats
+title: QA: property value statistics
+host: navisworks
+set: navisworks
+tx: false
+desc: Distinct values of a property with item counts (and numeric min/max/sum) across the model or the scope - e.g. Element/Category, Element/Level, Element/Workset, Item/Layer.
+arg: category | string! | Property category
+arg: property | string! | Property name
+arg: top | integer | Max distinct values (default 100)
+code:
+var counts = new Dictionary<string, int>(); double mn = double.MaxValue, mx = double.MinValue, sum = 0; int nums = 0, total = 0;
+var scope = Items(); IEnumerable<ModelItem> src;
+if (scope.Count > 0 && !Has("search")) { var l = new List<ModelItem>(); foreach (ModelItem it in scope) l.AddRange(it.DescendantsAndSelf); src = l; }
+else { var l = new List<ModelItem>(); foreach (ModelItem r in doc.Models.RootItems) l.AddRange(r.DescendantsAndSelf); src = l; }
+foreach (var it in src)
+{
+    var p = it.PropertyCategories.FindPropertyByDisplayName(S("category"), S("property"));
+    if (p == null || p.Value == null) continue;
+    total++;
+    var v = p.Value;
+    if (v.IsDouble || v.IsInt32 || v.IsDoubleLength || v.IsDoubleArea || v.IsDoubleVolume)
+    {
+        double d = v.IsInt32 ? v.ToInt32() : v.IsDoubleLength ? v.ToDoubleLength() : v.IsDoubleArea ? v.ToDoubleArea() : v.IsDoubleVolume ? v.ToDoubleVolume() : v.ToDouble(); mn = Math.Min(mn, d); mx = Math.Max(mx, d); sum += d; nums++;
+    }
+    var s = v.ToDisplayString(); int c; counts.TryGetValue(s, out c); counts[s] = c + 1;
+}
+return R("items", total, "distinct", counts.Count,
+    "numeric", nums == 0 ? null : R("min", mn, "max", mx, "sum", sum, "count", nums),
+    "values", counts.OrderByDescending(kv => kv.Value).Take(I("top", 100)).Select(kv => (object)R("value", kv.Key, "count", kv.Value)).ToList());
+
+@@ navis_qa_model_health
+title: QA: model health summary
+host: navisworks
+set: navisworks
+tx: false
+desc: Per appended model: item count, geometry items, hidden items, items without properties, class breakdown (top 15) and overall extents - a quick federated-model audit.
+code:
+var res = new List<object>();
+foreach (Model m in doc.Models)
+{
+    int all = 0, geo = 0, hidden = 0, noProps = 0; var cls = new Dictionary<string, int>();
+    foreach (ModelItem it in m.RootItem.DescendantsAndSelf)
+    {
+        all++; if (it.IsHidden) hidden++;
+        if (!it.HasGeometry) continue;
+        geo++; if (it.PropertyCategories.Count() <= 1) noProps++;
+        int c; cls.TryGetValue(it.ClassDisplayName ?? "", out c); cls[it.ClassDisplayName ?? ""] = c + 1;
+    }
+    var bb = m.RootItem.BoundingBox();
+    res.Add(R("model", m.FileName, "units", m.Units.ToString(), "items", all, "geometry", geo, "hidden", hidden, "geometryWithoutProperties", noProps,
+        "extents", bb == null ? null : R("min", new[] { bb.Min.X, bb.Min.Y, bb.Min.Z }, "max", new[] { bb.Max.X, bb.Max.Y, bb.Max.Z }),
+        "classes", cls.OrderByDescending(kv => kv.Value).Take(15).ToDictionary(kv => kv.Key, kv => (object)kv.Value)));
+}
+return res;
+
+@@ navis_qa_model_alignment
+title: QA: model alignment check
+host: navisworks
+set: navisworks
+tx: false
+desc: Compares the extents of every appended model with the first (reference) model - large offsets reveal shared-coordinate / units mistakes between disciplines.
+arg: warnDistance | number | Warn when a model centre is farther than this from the reference centre (model units, default 100)
+code:
+var ms = doc.Models.Cast<Model>().ToList(); if (ms.Count == 0) Fail("No models loaded.");
+var b0 = ms[0].RootItem.BoundingBox(); var c0 = b0.Center; var res = new List<object>();
+foreach (var m in ms)
+{
+    var b = m.RootItem.BoundingBox(); if (b == null || b.IsEmpty) continue; var c = b.Center;
+    var dist = Math.Sqrt(Math.Pow(c.X - c0.X, 2) + Math.Pow(c.Y - c0.Y, 2) + Math.Pow(c.Z - c0.Z, 2));
+    var overlap = !(b.Max.X < b0.Min.X || b.Min.X > b0.Max.X || b.Max.Y < b0.Min.Y || b.Min.Y > b0.Max.Y);
+    res.Add(R("model", m.FileName, "units", m.Units.ToString(), "centre", new[] { c.X, c.Y, c.Z }, "offsetFromReference", dist, "overlapsReferenceXY", overlap,
+        "warning", dist > N("warnDistance", 100) || !overlap));
+}
+return R("reference", ms[0].FileName, "models", res);
+
+@@ navis_export_properties_csv
+title: Export properties to CSV
+host: navisworks
+set: navisworks
+tx: false
+desc: Writes a CSV of the scope items (or all geometry items) with chosen properties ([{category, property}]) or every property of the given categories. Good for quantity take-off and data audits in Excel.
+arg: path | string! | CSV file path
+arg: properties | array | [{"category":"Element","property":"Category"}, ...]
+arg: categories | strings | Export every property of these categories (e.g. Element, Item)
+arg: geometryOnly | boolean | Only items with geometry (default true)
+code:
+var scope = Items(); var items = new List<ModelItem>();
+IEnumerable<ModelItem> roots = (scope.Count > 0 && !Has("search")) ? scope.Cast<ModelItem>() : doc.Models.RootItems.Cast<ModelItem>();
+foreach (var r in roots) foreach (ModelItem d in r.DescendantsAndSelf) if (!B("geometryOnly", true) || d.HasGeometry) items.Add(d);
+var cols = new List<Tuple<string, string>>();
+foreach (var o in A("properties").OfType<Dictionary<string, object>>()) cols.Add(Tuple.Create(BurakBim.Shared.Json.Str(o, "category"), BurakBim.Shared.Json.Str(o, "property")));
+var cats = SL("categories");
+if (cats != null && cats.Count > 0)
+    foreach (var it in items.Take(2000))
+        foreach (PropertyCategory pc in it.PropertyCategories)
+            if (cats.Contains(pc.DisplayName, StringComparer.OrdinalIgnoreCase))
+                foreach (DataProperty dp in pc.Properties) { var t = Tuple.Create(pc.DisplayName, dp.DisplayName); if (!cols.Contains(t)) cols.Add(t); }
+if (cols.Count == 0) Fail("Give properties or categories.");
+Func<string, string> esc = s => s == null ? "" : (s.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0 ? "\"" + s.Replace("\"", "\"\"") + "\"" : s);
+var sb = new System.Text.StringBuilder();
+sb.AppendLine("Path,Name,Class," + string.Join(",", cols.Select(c => esc(c.Item1 + "/" + c.Item2))));
+foreach (var it in items)
+{
+    sb.Append(esc(PathOf(it))).Append(',').Append(esc(it.DisplayName)).Append(',').Append(esc(it.ClassDisplayName));
+    foreach (var c in cols) { var p = it.PropertyCategories.FindPropertyByDisplayName(c.Item1, c.Item2); sb.Append(',').Append(esc(p == null || p.Value == null ? "" : p.Value.ToDisplayString())); }
+    sb.AppendLine();
+}
+System.IO.File.WriteAllText(S("path"), sb.ToString(), System.Text.Encoding.UTF8);
+return R("path", S("path"), "rows", items.Count, "columns", cols.Count + 3);
+
+@@ navis_export_tree_json
+title: Export model tree to JSON
+host: navisworks
+set: navisworks
+tx: false
+desc: Writes the selection tree (name, class, guid, geometry flag, children) to a JSON file down to a depth - for external dashboards / digital-twin mapping.
+arg: path | string! | JSON file path
+arg: depth | integer | Depth (default 4)
+code:
+int max = I("depth", 4); int count = 0;
+Func<ModelItem, int, object> node = null;
+node = (it, d) => { count++; var o = R("name", it.DisplayName, "class", it.ClassDisplayName, "guid", it.InstanceGuid == Guid.Empty ? null : it.InstanceGuid.ToString(), "geometry", it.HasGeometry);
+    if (d < max && it.Children.Any()) o["children"] = it.Children.Select(c => node(c, d + 1)).ToList(); return o; };
+var tree = doc.Models.RootItems.Cast<ModelItem>().Select(r => node(r, 1)).ToList();
+System.IO.File.WriteAllText(S("path"), BurakBim.Shared.Json.Serialize(tree, true));
+return R("path", S("path"), "nodes", count);
+
+@@ navis_exporters
+title: List exporters / run exporter
+host: navisworks
+set: navisworks
+tx: false
+desc: Lists installed export plugins (FBX, DWF/DWFx, Google Earth KML, Images, Viewpoints XML, Clash XML/HTML, PDS, Piranesi...) or runs one by id (partial match) to a file.
+arg: id | string | Exporter plugin id (or part of it) - omit to list
+arg: path | string | Output file
+code:
+var recs = Autodesk.Navisworks.Api.Application.Plugins.PluginRecords.Where(p => p.Id.IndexOf("Export", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+if (!Has("id")) return recs.Select(p => (object)R("id", p.Id, "name", p.DisplayName, "loaded", p.IsLoaded)).ToList();
+var rec = recs.FirstOrDefault(p => p.Id.IndexOf(S("id"), StringComparison.OrdinalIgnoreCase) >= 0);
+if (rec == null) Fail("No exporter matches '" + S("id") + "'.");
+if (!rec.IsLoaded) rec.LoadPlugin();
+dynamic plugin = rec.LoadedPlugin;
+var rc = plugin.Execute(S("path"));
+return R("exporter", rec.Id, "path", S("path"), "result", Convert.ToString(rc));
+
+@@ navis_plugins
+title: Navisworks plug-ins and add-in commands
+host: navisworks
+set: navisworks
+tx: false
+desc: Lists every plug-in (add-ins, docking panes, exporters, file readers, tools) with load state, or executes an AddInPlugin by id with string parameters (third-party add-ins, iConstruct, Naviate...).
+arg: search | string | Filter by id / name
+arg: execute | string | AddInPlugin id to execute
+arg: parameters | strings | Parameters for the add-in
+code:
+if (Has("execute"))
+{
+    var rc = Autodesk.Navisworks.Api.Application.Plugins.ExecuteAddInPlugin(S("execute"), (SL("parameters") ?? new List<string>()).ToArray());
+    return R("executed", S("execute"), "returnCode", rc);
+}
+var f = S("search");
+return Autodesk.Navisworks.Api.Application.Plugins.PluginRecords
+    .Where(p => f == null || p.Id.IndexOf(f, StringComparison.OrdinalIgnoreCase) >= 0 || (p.DisplayName ?? "").IndexOf(f, StringComparison.OrdinalIgnoreCase) >= 0)
+    .Select(p => (object)R("id", p.Id, "name", p.DisplayName, "type", p.GetType().Name, "loaded", p.IsLoaded)).ToList();
+
+@@ navis_grids_levels
+title: Grids and levels
+host: navisworks
+set: navisworks
+tx: false
+desc: Grid systems, levels (name, elevation) and grid lines from the federated model (Revit/IFC grids) - use for "which level / grid is this clash on".
+code:
+dynamic grids = ((dynamic)doc).Grids; var res = new List<object>();
+foreach (dynamic sys in grids.Systems)
+{
+    var lv = new List<object>(); var ln = new List<object>();
+    try { foreach (dynamic l in sys.Levels) lv.Add(R("name", (string)l.DisplayName, "elevation", (double)l.Elevation)); } catch { }
+    try { foreach (dynamic g in sys.Lines) ln.Add((string)g.DisplayName); } catch { }
+    res.Add(R("system", (string)sys.DisplayName, "levels", lv, "lines", ln));
+}
+string active = null; try { active = (string)grids.ActiveSystem.DisplayName; } catch { }
+return R("active", active, "systems", res);
+
+@@ navis_item_level
+title: Level / nearest grid of items
+host: navisworks
+set: navisworks
+tx: false
+desc: For the scope items, reports the grid level below each item's centre and the nearest grid intersection (via GridSystem.ClosestIntersection when available).
+arg: limit | integer | Max items (default 200)
+code:
+dynamic sys = ((dynamic)doc).Grids.ActiveSystem; if (sys == null) Fail("No active grid system.");
+var res = new List<object>();
+foreach (ModelItem it in Items())
+{
+    if (res.Count >= I("limit", 200)) break;
+    var b = it.BoundingBox(); if (b == null || b.IsEmpty) continue; var c = b.Center;
+    string lvl = null; double best = double.MinValue;
+    foreach (dynamic l in sys.Levels) { double e = (double)l.Elevation; if (e <= c.Z + 1e-6 && e > best) { best = e; lvl = (string)l.DisplayName; } }
+    string grid = null; try { dynamic gi = sys.ClosestIntersection(c); grid = gi == null ? null : (string)gi.DisplayName; } catch { }
+    res.Add(R("item", it.DisplayName, "path", PathOf(it), "level", lvl, "grid", grid, "centre", new[] { c.X, c.Y, c.Z }));
+}
+return res;
+
+@@ navis_transparency
+title: Override transparency
+host: navisworks
+set: navisworks
+tx: true
+desc: Set permanent transparency (0-100 %) on the scope items, e.g. make architecture 70 % transparent to review MEP.
+arg: percent | number! | 0 = opaque, 100 = invisible
+code:
+var items = Items(); doc.Models.OverridePermanentTransparency(items, Math.Max(0, Math.Min(100, N("percent"))) / 100.0);
+return R("items", items.Count, "transparency", N("percent"));
+
+@@ navis_isolate
+title: Isolate / unhide all
+host: navisworks
+set: navisworks
+tx: true
+desc: Isolate the scope items (hide everything else, keeping their ancestors visible) or unhide everything.
+arg: mode | string! | isolate or unhide_all
+code:
+if (S("mode") == "unhide_all") { doc.Models.ResetAllHidden(); return R("hiddenReset", true); }
+var keep = new HashSet<ModelItem>(); var items = Items();
+foreach (ModelItem it in items) { foreach (var x in it.DescendantsAndSelf) keep.Add(x); foreach (var a in it.Ancestors) keep.Add(a); }
+var hide = new ModelItemCollection();
+foreach (ModelItem root in doc.Models.RootItems)
+{
+    var stack = new Stack<ModelItem>(); stack.Push(root);
+    while (stack.Count > 0) { var n = stack.Pop(); if (keep.Contains(n)) { if (!items.Contains(n)) foreach (var c in n.Children) stack.Push(c); } else hide.Add(n); }
+}
+doc.Models.SetHidden(hide, true);
+return R("isolated", items.Count, "hiddenBranches", hide.Count);
+
+@@ navis_zoom_to
+title: Zoom to items
+host: navisworks
+set: navisworks
+tx: false
+desc: Select the scope items and zoom the active view to them (Focus on selection).
+code:
+var items = Items(); doc.CurrentSelection.CopyFrom(items);
+try { var bb = items.BoundingBox(); dynamic vp = doc.CurrentViewpoint.CreateCopy(); vp.ZoomBox(bb); doc.CurrentViewpoint.CopyFrom((Viewpoint)vp); }
+catch { ((dynamic)Autodesk.Navisworks.Api.ComApi.ComApiBridge.State).ZoomInCurViewOnCurSel(); }
+return R("zoomed", items.Count);
+
+@@ navis_view_preset
+title: Standard views / projection / render style
+host: navisworks
+set: navisworks
+tx: false
+desc: Change the current view: home, front/back/left/right/top/bottom, perspective or orthographic projection, and render style (full, shaded, wireframe, hidden line).
+arg: view | string | home, top, bottom, front, back, left, right
+arg: projection | string | perspective or orthographic
+arg: style | string | full, shaded, wireframe, hiddenline
+code:
+var vp = doc.CurrentViewpoint.CreateCopy();
+if (Has("projection")) vp.Projection = S("projection") == "orthographic" ? ViewpointProjection.Orthographic : ViewpointProjection.Perspective;
+if (Has("style")) vp.RenderStyle = S("style") == "wireframe" ? ViewpointRenderStyle.Wireframe : S("style") == "hiddenline" ? ViewpointRenderStyle.HiddenLine : S("style") == "shaded" ? ViewpointRenderStyle.Shaded : ViewpointRenderStyle.FullRender;
+if (Has("view"))
+{
+    var bb = doc.GetBoundingBox(false); var c = bb.Center; var size = Math.Max(bb.Size.X, Math.Max(bb.Size.Y, bb.Size.Z)) * 1.6;
+    double dx = 0.577, dy = -0.577, dz = 0.577;
+    switch (S("view")) { case "top": dx = 0; dy = 0; dz = 1; break; case "bottom": dx = 0; dy = 0; dz = -1; break; case "front": dx = 0; dy = -1; dz = 0; break;
+        case "back": dx = 0; dy = 1; dz = 0; break; case "left": dx = -1; dy = 0; dz = 0; break; case "right": dx = 1; dy = 0; dz = 0; break; }
+    vp.Position = new Point3D(c.X + dx * size, c.Y + dy * size, c.Z + dz * size);
+    vp.PointAt(c);
+    try { ((dynamic)vp).AlignUp(S("view") == "top" || S("view") == "bottom" ? new Vector3D(0, 1, 0) : new Vector3D(0, 0, 1)); } catch { }
+}
+doc.CurrentViewpoint.CopyFrom(vp);
+return R("view", S("view"), "projection", vp.Projection.ToString(), "style", vp.RenderStyle.ToString());
+
+@@ navis_lighting
+title: Lighting mode
+host: navisworks
+set: navisworks
+tx: false
+desc: Set the current viewpoint lighting: none, headlight, scene, full.
+arg: mode | string! | none, headlight, scene, full
+code:
+var vp = doc.CurrentViewpoint.CreateCopy();
+vp.Lighting = S("mode") == "none" ? ViewpointLighting.None : S("mode") == "scene" ? ViewpointLighting.SceneLights : S("mode") == "full" ? ViewpointLighting.FullLights : ViewpointLighting.Headlight;
+doc.CurrentViewpoint.CopyFrom(vp);
+return R("lighting", vp.Lighting.ToString());
+
+@@ navis_file_ops
+title: Append / merge / open / save / clear
+host: navisworks
+set: navisworks
+tx: false
+desc: Append one or many model files (NWC, NWD, RVT, IFC, DWG, FBX, RCP, ...), merge an NWF/NWD, open, save (NWF/NWD by extension) or clear the document.
+arg: action | string! | append, merge, open, save, clear
+arg: paths | strings | Files for append (many) / merge / open (first)
+arg: path | string | Target for save
+code:
+var ps = SL("paths") ?? new List<string>(); var done = new List<object>();
+switch (S("action"))
+{
+    case "append": foreach (var p in ps) { doc.AppendFile(p); done.Add(p); } break;
+    case "merge": foreach (var p in ps) { doc.MergeFile(p); done.Add(p); } break;
+    case "open": doc.OpenFile(ps.First()); done.Add(ps.First()); break;
+    case "save": doc.SaveFile(S("path")); done.Add(S("path")); break;
+    case "clear": doc.Clear(); break;
+}
+return R("action", S("action"), "files", done, "models", doc.Models.Count);
+
+@@ navis_append_folder
+title: Append every model in a folder
+host: navisworks
+set: navisworks
+tx: false
+desc: Appends all files of the given extensions in a folder (optionally recursive) - one-click federation of a discipline drop folder.
+arg: folder | string! | Folder
+arg: extensions | strings | Extensions (default nwc, nwd, ifc, rvt, dwg)
+arg: recursive | boolean | Include sub-folders
+code:
+var ext = (SL("extensions") ?? new List<string> { "nwc", "nwd", "ifc", "rvt", "dwg" }).Select(e => "." + e.TrimStart('.').ToLowerInvariant()).ToList();
+var files = System.IO.Directory.GetFiles(S("folder"), "*.*", B("recursive") ? System.IO.SearchOption.AllDirectories : System.IO.SearchOption.TopDirectoryOnly)
+    .Where(f => ext.Contains(System.IO.Path.GetExtension(f).ToLowerInvariant())).OrderBy(f => f).ToList();
+var ok = new List<object>(); var bad = new List<object>();
+foreach (var f in files) { try { doc.AppendFile(f); ok.Add(f); } catch (Exception ex) { bad.Add(R("file", f, "error", ex.Message)); } }
+return R("appended", ok, "failed", bad, "models", doc.Models.Count);
+
+@@ navis_units_info
+title: Document & model units / origin
+host: navisworks
+set: navisworks
+tx: false
+desc: Document display units, each model's units, transform origin and overall scene extents in model units and millimetres.
+code:
+var bb = doc.GetBoundingBox(false);
+return R("documentUnits", doc.Units.ToString(), "toMm", ToMm,
+    "extents", bb == null ? null : R("min", new[] { bb.Min.X, bb.Min.Y, bb.Min.Z }, "max", new[] { bb.Max.X, bb.Max.Y, bb.Max.Z }, "sizeMm", new[] { bb.Size.X * ToMm, bb.Size.Y * ToMm, bb.Size.Z * ToMm }),
+    "models", doc.Models.Cast<Model>().Select(m => (object)R("file", m.FileName, "units", m.Units.ToString(), "transform", (string)((dynamic)m).Transform.ToString())).ToList());
+
+@@ navis_item_geometry
+title: Item geometry details
+host: navisworks
+set: navisworks
+tx: false
+desc: For scope items: bounding box size (mm), volume of the box, original vs active colour and transparency, fragment count.
+arg: limit | integer | Max items (default 100)
+code:
+var res = new List<object>();
+foreach (ModelItem it in Items())
+{
+    if (res.Count >= I("limit", 100)) break;
+    var b = it.BoundingBox(); dynamic g = it.Geometry;
+    res.Add(R("item", it.DisplayName, "class", it.ClassDisplayName,
+        "sizeMm", b == null ? null : new[] { b.Size.X * ToMm, b.Size.Y * ToMm, b.Size.Z * ToMm },
+        "originalColor", g == null ? null : (string)g.OriginalColor.ToString(), "activeColor", g == null ? null : (string)g.ActiveColor.ToString(),
+        "transparency", g == null ? (double?)null : (double)g.ActiveTransparency, "fragments", g == null ? 0 : (int)g.FragmentCount));
+}
+return res;
+
+@@ navis_selection_inspector
+title: Selection inspector table
+host: navisworks
+set: navisworks
+tx: false
+desc: Tabular view of the current selection with chosen quick properties (default Item/Name, Item/Type, Element/Category, Element/Level) - like Navisworks' Selection Inspector.
+arg: properties | array | [{"category":"Item","property":"Layer"}, ...]
+arg: limit | integer | Max rows (default 300)
+code:
+var cols = A("properties").OfType<Dictionary<string, object>>().Select(o => Tuple.Create(BurakBim.Shared.Json.Str(o, "category"), BurakBim.Shared.Json.Str(o, "property"))).ToList();
+if (cols.Count == 0) cols = new List<Tuple<string, string>> { Tuple.Create("Item", "Name"), Tuple.Create("Item", "Type"), Tuple.Create("Element", "Category"), Tuple.Create("Element", "Level") };
+var rows = new List<object>();
+foreach (ModelItem it in doc.CurrentSelection.SelectedItems)
+{
+    if (rows.Count >= I("limit", 300)) break;
+    var row = R("path", PathOf(it));
+    foreach (var c in cols) { var p = it.PropertyCategories.FindPropertyByDisplayName(c.Item1, c.Item2); row[c.Item1 + "/" + c.Item2] = p == null || p.Value == null ? null : p.Value.ToDisplayString(); }
+    rows.Add(row);
+}
+return R("selected", doc.CurrentSelection.SelectedItems.Count, "rows", rows);
+
+@@ navis_select_parents
+title: Select parents / children / siblings
+host: navisworks
+set: navisworks
+tx: false
+desc: Expand the current selection: to parents (e.g. from geometry to the Revit element), first-level children, all descendants with geometry, or siblings.
+arg: mode | string! | parent, children, geometry, siblings, model_root
+code:
+var res = new ModelItemCollection();
+foreach (ModelItem it in doc.CurrentSelection.SelectedItems)
+{
+    switch (S("mode"))
+    {
+        case "parent": if (it.Parent != null) res.Add(it.Parent); break;
+        case "children": res.AddRange(it.Children); break;
+        case "geometry": foreach (var d in it.DescendantsAndSelf) if (d.HasGeometry) res.Add(d); break;
+        case "siblings": if (it.Parent != null) res.AddRange(it.Parent.Children); break;
+        case "model_root": var r = it; while (r.Parent != null) r = r.Parent; res.Add(r); break;
+    }
+}
+doc.CurrentSelection.CopyFrom(res);
+return R("selected", doc.CurrentSelection.SelectedItems.Count);
+
+@@ navis_select_by_guid
+title: Select by GUID / element id
+host: navisworks
+set: navisworks
+tx: false
+desc: Find items by InstanceGuid, Revit Element ID (Element/Id) or IFC GlobalId and select them - links issues from BCF / Revit back into Navisworks.
+arg: guids | strings | Navisworks instance GUIDs
+arg: elementIds | strings | Revit element ids (Element/Id)
+arg: ifcGuids | strings | IFC GlobalIds
+code:
+var found = new ModelItemCollection();
+var g = new HashSet<string>(SL("guids") ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+var ids = new HashSet<string>(SL("elementIds") ?? new List<string>());
+var ifc = new HashSet<string>(SL("ifcGuids") ?? new List<string>());
+foreach (ModelItem root in doc.Models.RootItems)
+    foreach (ModelItem it in root.DescendantsAndSelf)
+    {
+        if (g.Count > 0 && it.InstanceGuid != Guid.Empty && g.Contains(it.InstanceGuid.ToString())) { found.Add(it); continue; }
+        if (ids.Count > 0) { var p = it.PropertyCategories.FindPropertyByDisplayName("Element", "Id") ?? it.PropertyCategories.FindPropertyByDisplayName("Element ID", "Value"); if (p != null && ids.Contains(p.Value.ToDisplayString())) { found.Add(it); continue; } }
+        if (ifc.Count > 0) { var p = it.PropertyCategories.FindPropertyByDisplayName("IFC", "GLOBALID") ?? it.PropertyCategories.FindPropertyByDisplayName("Element", "IfcGUID"); if (p != null && ifc.Contains(p.Value.ToDisplayString())) found.Add(it); }
+    }
+doc.CurrentSelection.CopyFrom(found);
+return R("found", found.Count, "items", DescAll(found, 200));
+
+@@ navis_clash_items_report
+title: Clash: items most involved
+host: navisworks
+set: navisworks
+tx: false
+desc: Ranks model items (and their parent element) by how many active clashes they are part of across all tests - finds the few elements causing most clashes.
+arg: top | integer | Top N (default 30)
+arg: includeResolved | boolean | Count resolved/approved too
+code:
+var counts = new Dictionary<ModelItem, int>();
+foreach (dynamic t in ClashDoc().TestsData.Tests)
+    foreach (dynamic r in t.Children)
+    {
+        var list = new List<dynamic>();
+        if (r is Autodesk.Navisworks.Api.Clash.ClashResultGroup) foreach (dynamic c in r.Children) list.Add(c); else list.Add(r);
+        foreach (dynamic c in list)
+        {
+            string st = c.Status.ToString(); if (!B("includeResolved") && (st == "Resolved" || st == "Approved")) continue;
+            foreach (ModelItem it in new[] { (ModelItem)c.Item1, (ModelItem)c.Item2 }) { if (it == null) continue; int n; counts.TryGetValue(it, out n); counts[it] = n + 1; }
+        }
+    }
+return counts.OrderByDescending(kv => kv.Value).Take(I("top", 30)).Select(kv => (object)R("clashes", kv.Value, "item", Desc(kv.Key), "parent", kv.Key.Parent == null ? null : kv.Key.Parent.DisplayName)).ToList();
+
+@@ navis_clash_by_discipline
+title: Clash: discipline matrix by model file
+host: navisworks
+set: navisworks
+tx: false
+desc: Counts active clashes per pair of source model files (e.g. STR.nwc x MEP.nwc) across all tests - the classic coordination-meeting matrix.
+code:
+Func<ModelItem, string> src = it => { var r = it; while (r != null && r.Parent != null) r = r.Parent; return r == null ? "?" : r.DisplayName; };
+var m = new Dictionary<string, int>();
+foreach (dynamic t in ClashDoc().TestsData.Tests)
+    foreach (dynamic r in t.Children)
+    {
+        var list = new List<dynamic>();
+        if (r is Autodesk.Navisworks.Api.Clash.ClashResultGroup) foreach (dynamic c in r.Children) list.Add(c); else list.Add(r);
+        foreach (dynamic c in list)
+        {
+            string st = c.Status.ToString(); if (st == "Resolved" || st == "Approved") continue;
+            ModelItem a = c.Item1, b = c.Item2; if (a == null || b == null) continue;
+            var k = string.CompareOrdinal(src(a), src(b)) <= 0 ? src(a) + " x " + src(b) : src(b) + " x " + src(a);
+            int n; m.TryGetValue(k, out n); m[k] = n + 1;
+        }
+    }
+return m.OrderByDescending(kv => kv.Value).Select(kv => (object)R("pair", kv.Key, "activeClashes", kv.Value)).ToList();
+
+@@ navis_clash_assign
+title: Clash: assign and comment
+host: navisworks
+set: navisworks
+tx: true
+desc: Assign all active clashes of a test (optionally only those whose items come from a given model file) to a person and add a comment - batch coordination workflow.
+arg: test | string! | Clash test name
+arg: assignTo | string! | Person / company
+arg: modelFile | string | Only clashes touching this source file name (contains)
+arg: comment | string | Comment text
+code:
+dynamic cd = ClashDoc(); dynamic t = Test(S("test")); int n = 0;
+Func<ModelItem, string> src = it => { var r = it; while (r != null && r.Parent != null) r = r.Parent; return r == null ? "" : r.DisplayName; };
+var list = new List<dynamic>();
+foreach (dynamic r in t.Children) { if (r is Autodesk.Navisworks.Api.Clash.ClashResultGroup) foreach (dynamic c in r.Children) list.Add(c); else list.Add(r); }
+foreach (dynamic c in list)
+{
+    string st = c.Status.ToString(); if (st == "Resolved" || st == "Approved") continue;
+    if (Has("modelFile")) { ModelItem a = c.Item1, b = c.Item2; if ((a == null || src(a).IndexOf(S("modelFile"), StringComparison.OrdinalIgnoreCase) < 0) && (b == null || src(b).IndexOf(S("modelFile"), StringComparison.OrdinalIgnoreCase) < 0)) continue; }
+    cd.TestsData.TestsEditResultAssignedTo(c, S("assignTo"));
+    if (Has("comment")) { var cc = new CommentCollection(); foreach (Comment old in c.Comments) cc.Add(old); cc.Add(new Comment(S("comment"), CommentStatus.New)); cd.TestsData.TestsEditResultComments(c, cc); }
+    n++;
+}
+return R("assigned", n, "to", S("assignTo"));
+
+@@ navis_timeliner_link_sets
+title: TimeLiner: attach selection sets to tasks
+host: navisworks
+set: navisworks
+tx: true
+desc: Attaches saved selection / search sets to TimeLiner tasks whose names match the set names (case-insensitive) - fast 4D linking after task import.
+arg: overwrite | boolean | Replace existing attachments
+code:
+dynamic tl = TimelinerDoc();
+var sets = new Dictionary<string, SelectionSet>(StringComparer.OrdinalIgnoreCase);
+Action<GroupItem> walk = null;
+walk = g => { foreach (SavedItem s in g.Children) { if (s is SelectionSet) sets[s.DisplayName] = (SelectionSet)s; else if (s is GroupItem) walk((GroupItem)s); } };
+walk(doc.SelectionSets.RootItem);
+int linked = 0; var missing = new List<object>();
+Action<dynamic> visit = null;
+visit = (dynamic parent) =>
+{
+    foreach (dynamic t in parent.Children)
+    {
+        SelectionSet ss;
+        if (sets.TryGetValue((string)t.DisplayName, out ss))
+        {
+            dynamic copy = t.CreateCopy();
+            copy.Selection.CopyFrom(new SelectionSource[] { doc.SelectionSets.CreateSelectionSource(ss) });
+            tl.TaskEdit(t, copy); linked++;
+        }
+        else missing.Add((string)t.DisplayName);
+        visit(t);
+    }
+};
+visit(tl.TasksRoot);
+return R("linked", linked, "tasksWithoutSet", missing.Take(100).ToList(), "sets", sets.Count);
+
+@@ navis_timeliner_summary
+title: TimeLiner: schedule summary
+host: navisworks
+set: navisworks
+tx: false
+desc: Project start/end, task count, tasks without attached items, overdue (actual end after planned end) and current-date tasks - a 4D health check.
+arg: date | string | Status date (ISO, default today)
+code:
+dynamic tl = TimelinerDoc(); var when = Has("date") ? DateTime.Parse(S("date")) : DateTime.Today;
+int total = 0, unlinked = 0, late = 0; var active = new List<object>(); DateTime? start = null, end = null;
+Action<dynamic> visit = null;
+visit = (dynamic p) =>
+{
+    foreach (dynamic t in p.Children)
+    {
+        total++;
+        DateTime? ps = t.PlannedStartDate, pe = t.PlannedEndDate, ae = t.ActualEndDate;
+        if (ps.HasValue && (!start.HasValue || ps < start)) start = ps; if (pe.HasValue && (!end.HasValue || pe > end)) end = pe;
+        bool noSel = true; try { noSel = t.Selection == null || !(bool)t.Selection.HasExplicitSelection && !(bool)t.Selection.HasSelectionSources; } catch { }
+        if (noSel && t.Children.Count == 0) unlinked++;
+        if (ae.HasValue && pe.HasValue && ae > pe) late++;
+        if (ps.HasValue && pe.HasValue && ps <= when && pe >= when) active.Add((string)t.DisplayName);
+        visit(t);
+    }
+};
+visit(tl.TasksRoot);
+return R("tasks", total, "start", start, "end", end, "withoutAttachedItems", unlinked, "finishedLate", late, "activeOn", when.ToString("yyyy-MM-dd"), "activeTasks", active.Take(100).ToList());
+
+@@ navis_documentation_snapshot
+title: Coordination snapshot (images per viewpoint)
+host: navisworks
+set: navisworks
+tx: false
+desc: For every saved viewpoint in a folder (or all), activates it and saves a PNG into a folder - instant issue sheet for coordination meetings.
+arg: folder | string! | Output folder
+arg: viewpointFolder | string | Only viewpoints inside this viewpoint folder
+arg: width | integer | Pixels (default 1600)
+arg: height | integer | Pixels (default 900)
+code:
+System.IO.Directory.CreateDirectory(S("folder")); var done = new List<object>();
+Action<GroupItem, bool> walk = null;
+walk = (g, inside) =>
+{
+    foreach (SavedItem s in g.Children)
+    {
+        if (s is GroupItem) { walk((GroupItem)s, inside || string.Equals(s.DisplayName, S("viewpointFolder"), StringComparison.OrdinalIgnoreCase)); continue; }
+        var sv = s as SavedViewpoint; if (sv == null || (Has("viewpointFolder") && !inside)) continue;
+        doc.SavedViewpoints.CurrentSavedViewpoint = sv;
+        var bmp = doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, I("width", 1600), I("height", 900));
+        var name = string.Join("_", sv.DisplayName.Split(System.IO.Path.GetInvalidFileNameChars()));
+        var path = System.IO.Path.Combine(S("folder"), (done.Count + 1).ToString("000") + "_" + name + ".png");
+        bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png); bmp.Dispose(); done.Add(path);
+    }
+};
+walk(doc.SavedViewpoints.RootItem, !Has("viewpointFolder"));
+return R("images", done.Count, "files", done);

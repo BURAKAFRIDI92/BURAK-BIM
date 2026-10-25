@@ -1,0 +1,432 @@
+# BURAK BIM tool pack - Revit MEP: systems, pipes, ducts, fittings, insulation, electrical, spaces
+
+@@ revit_mep_systems_report
+title: MEP systems report
+host: revit
+tx: false
+desc: Piping, duct and electrical systems with classification, element counts and base equipment.
+code:
+return All<MEPSystem>().Select(s => (object)R("id", IdOf(s), "name", s.Name, "class", s.GetType().Name, "type", Name(s.GetTypeId()),
+   "elements", s.Elements == null ? 0 : s.Elements.Size, "baseEquipment", s.BaseEquipment == null ? null : s.BaseEquipment.Name)).ToList();
+
+@@ revit_pipes_report
+title: Pipes report
+host: revit
+tx: false
+desc: Pipes with system, type, diameter (mm), length (m), slope and level; totals by system and diameter.
+code:
+var pipes = All<Pipe>().ToList();
+Func<Pipe, string> sys = p => { var s = p.MEPSystem; return s == null ? "(none)" : s.Name; };
+return R("count", pipes.Count,
+  "lengthBySystemM", pipes.GroupBy(sys).ToDictionary(g => g.Key, g => (object)Math.Round(g.Sum(p => p.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH).AsDouble()) * 0.3048, 2)),
+  "lengthByDiameterM", pipes.GroupBy(p => Mm(p.Diameter).ToString() + " mm").ToDictionary(g => g.Key, g => (object)Math.Round(g.Sum(p => p.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH).AsDouble()) * 0.3048, 2)),
+  "pipes", pipes.Take(1500).Select(p => (object)R("id", IdOf(p), "system", sys(p), "type", p.PipeType.Name, "diameterMm", Mm(p.Diameter),
+      "lengthMm", Mm(p.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH).AsDouble()), "slope", p.get_Parameter(BuiltInParameter.RBS_PIPE_SLOPE) == null ? null : p.get_Parameter(BuiltInParameter.RBS_PIPE_SLOPE).AsValueString(), "level", Name(p.ReferenceLevel.Id))).ToList());
+
+@@ revit_ducts_report
+title: Ducts report
+host: revit
+tx: false
+desc: Ducts with system, type, size, length and level; totals by system.
+code:
+var ducts = All<Duct>().ToList();
+Func<Duct, string> sys = d => d.MEPSystem == null ? "(none)" : d.MEPSystem.Name;
+return R("count", ducts.Count,
+  "lengthBySystemM", ducts.GroupBy(sys).ToDictionary(g => g.Key, g => (object)Math.Round(g.Sum(d => d.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH).AsDouble()) * 0.3048, 2)),
+  "ducts", ducts.Take(1500).Select(d => (object)R("id", IdOf(d), "system", sys(d), "type", d.DuctType.Name, "size", d.get_Parameter(BuiltInParameter.RBS_CALCULATED_SIZE) == null ? null : d.get_Parameter(BuiltInParameter.RBS_CALCULATED_SIZE).AsString(),
+      "lengthMm", Mm(d.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH).AsDouble()), "level", Name(d.ReferenceLevel.Id))).ToList());
+
+@@ revit_pipe_route
+title: Route pipes through points
+host: revit
+desc: Create a connected pipe run through points (mm) with elbows at every bend (uses the pipe type's routing preferences).
+arg: points | array! | [[x,y,z],...] at least 2
+arg: system | string | Piping system type (default first)
+arg: type | string | Pipe type
+arg: diameterMm | number | Diameter
+arg: level | string | Reference level
+code:
+var pts = A("points").Select(p => Pt(p)).ToList();
+var pt = TypeByName<PipeType>(S("type")); var st = TypeByName<PipingSystemType>(S("system"));
+var lv = Has("level") ? LvlArg() : Levels().Where(l => l.Elevation <= pts.Min(p => p.Z) + 1e-6).DefaultIfEmpty(Levels().First()).Last();
+var pipes = new List<Pipe>();
+for (int i = 0; i + 1 < pts.Count; i++)
+{
+    var p = Pipe.Create(doc, st.Id, pt.Id, lv.Id, pts[i], pts[i + 1]);
+    if (Has("diameterMm")) p.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM).Set(Ft(N("diameterMm")));
+    pipes.Add(p);
+}
+doc.Regenerate(); var fittings = new List<object>();
+for (int i = 0; i + 1 < pipes.Count; i++)
+{
+    Connector c1 = null, c2 = null; double best = double.MaxValue;
+    foreach (Connector a in pipes[i].ConnectorManager.Connectors) foreach (Connector b in pipes[i + 1].ConnectorManager.Connectors)
+        { var d = a.Origin.DistanceTo(b.Origin); if (d < best) { best = d; c1 = a; c2 = b; } }
+    try { fittings.Add(IdOf(doc.Create.NewElbowFitting(c1, c2))); } catch (Exception ex) { Print("elbow " + i + ": " + ex.Message); }
+}
+return R("pipes", IdList(pipes), "fittings", fittings);
+
+@@ revit_duct_route
+title: Route ducts through points
+host: revit
+desc: Create a connected duct run through points (mm) with elbows at bends.
+arg: points | array! | [[x,y,z],...]
+arg: system | string | Mechanical system type
+arg: type | string | Duct type
+arg: widthMm | number | Width (rectangular)
+arg: heightMm | number | Height (rectangular)
+arg: diameterMm | number | Diameter (round)
+arg: level | string | Reference level
+code:
+var pts = A("points").Select(p => Pt(p)).ToList();
+var dt = TypeByName<DuctType>(S("type")); var st = TypeByName<MechanicalSystemType>(S("system"));
+var lv = Has("level") ? LvlArg() : Levels().Where(l => l.Elevation <= pts.Min(p => p.Z) + 1e-6).DefaultIfEmpty(Levels().First()).Last();
+var ducts = new List<Duct>();
+for (int i = 0; i + 1 < pts.Count; i++)
+{
+    var d = Duct.Create(doc, st.Id, dt.Id, lv.Id, pts[i], pts[i + 1]);
+    if (Has("widthMm")) { var p = d.get_Parameter(BuiltInParameter.RBS_CURVE_WIDTH_PARAM); if (p != null) p.Set(Ft(N("widthMm"))); }
+    if (Has("heightMm")) { var p = d.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM); if (p != null) p.Set(Ft(N("heightMm"))); }
+    if (Has("diameterMm")) { var p = d.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM); if (p != null) p.Set(Ft(N("diameterMm"))); }
+    ducts.Add(d);
+}
+doc.Regenerate(); var fit = new List<object>();
+for (int i = 0; i + 1 < ducts.Count; i++)
+{
+    Connector c1 = null, c2 = null; double best = double.MaxValue;
+    foreach (Connector a in ducts[i].ConnectorManager.Connectors) foreach (Connector b in ducts[i + 1].ConnectorManager.Connectors)
+        { var dd = a.Origin.DistanceTo(b.Origin); if (dd < best) { best = dd; c1 = a; c2 = b; } }
+    try { fit.Add(IdOf(doc.Create.NewElbowFitting(c1, c2))); } catch (Exception ex) { Print("elbow " + i + ": " + ex.Message); }
+}
+return R("ducts", IdList(ducts), "fittings", fit);
+
+@@ revit_mep_connect
+title: Connect two MEP curves
+host: revit
+desc: Connect the nearest open ends of two pipes/ducts/trays/conduits with an elbow (or direct connection when aligned).
+arg: a | integer! | First element
+arg: b | integer! | Second element
+code:
+var ea = El(I("a")) as MEPCurve; var eb = El(I("b")) as MEPCurve; if (ea == null || eb == null) Fail("Both must be pipes/ducts/trays/conduits");
+Connector c1 = null, c2 = null; double best = double.MaxValue;
+foreach (Connector x in ea.ConnectorManager.Connectors) foreach (Connector y in eb.ConnectorManager.Connectors)
+  { if (x.IsConnected || y.IsConnected) continue; var d = x.Origin.DistanceTo(y.Origin); if (d < best) { best = d; c1 = x; c2 = y; } }
+if (c1 == null) Fail("No open connectors");
+if (best < 1e-3) { c1.ConnectTo(c2); return R("connected", "direct"); }
+return R("fitting", IdOf(doc.Create.NewElbowFitting(c1, c2)));
+
+@@ revit_mep_tee
+title: Tee between three MEP curves
+host: revit
+desc: Create a tee fitting joining a branch into a main split at the same point (main1, main2, branch ids).
+arg: main1 | integer! | Main segment 1
+arg: main2 | integer! | Main segment 2
+arg: branch | integer! | Branch
+code:
+Func<MEPCurve, XYZ, Connector> near = (m, p) => { Connector best = null; double d = double.MaxValue; foreach (Connector c in m.ConnectorManager.Connectors) { var dd = c.Origin.DistanceTo(p); if (dd < d) { d = dd; best = c; } } return best; };
+var m1 = (MEPCurve)El(I("main1")); var m2 = (MEPCurve)El(I("main2")); var br = (MEPCurve)El(I("branch"));
+Connector a = null, b = null; double dist = double.MaxValue;
+foreach (Connector x in m1.ConnectorManager.Connectors) foreach (Connector y in m2.ConnectorManager.Connectors) { var d = x.Origin.DistanceTo(y.Origin); if (d < dist) { dist = d; a = x; b = y; } }
+var t = doc.Create.NewTeeFitting(a, b, near(br, a.Origin));
+return R("tee", IdOf(t));
+
+@@ revit_mep_split
+title: Split pipe / duct at point
+host: revit
+desc: Break a pipe or duct into two at a point (mm), keeping connections (PlumbingUtils / MechanicalUtils).
+arg: id | integer! | Pipe or duct
+arg: point | point! | Split point on the element
+code:
+var e = El(I("id")); ElementId nid;
+if (e is Pipe) nid = PlumbingUtils.BreakCurve(doc, e.Id, P("point"));
+else if (e is Duct) nid = MechanicalUtils.BreakCurve(doc, e.Id, P("point"));
+else { Fail("Only pipes and ducts can be split"); return null; }
+return R("newSegment", IdOf(nid));
+
+@@ revit_pipe_size
+title: Set pipe diameter / slope
+host: revit
+desc: Change pipe diameter (mm) and/or slope (e.g. "2%" or 0.02) for pipes.
+arg: ids | ids | Pipes (omit = selection)
+arg: diameterMm | number | Diameter
+arg: slope | number | Slope ratio (0.01 = 1%)
+code:
+int n = 0;
+foreach (var e in Elems("ids")) { var p = e as Pipe; if (p == null) continue;
+  if (Has("diameterMm")) p.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM).Set(Ft(N("diameterMm")));
+  if (Has("slope")) { var sp = p.get_Parameter(BuiltInParameter.RBS_PIPE_SLOPE); if (sp != null && !sp.IsReadOnly) sp.Set(N("slope")); }
+  n++; }
+return R("updated", n);
+
+@@ revit_duct_size
+title: Set duct size
+host: revit
+desc: Change duct width/height or diameter (mm).
+arg: ids | ids | Ducts (omit = selection)
+arg: widthMm | number | Width
+arg: heightMm | number | Height
+arg: diameterMm | number | Diameter
+code:
+int n = 0;
+foreach (var e in Elems("ids")) { var d = e as Duct; if (d == null) continue;
+  if (Has("widthMm")) { var p = d.get_Parameter(BuiltInParameter.RBS_CURVE_WIDTH_PARAM); if (p != null && !p.IsReadOnly) p.Set(Ft(N("widthMm"))); }
+  if (Has("heightMm")) { var p = d.get_Parameter(BuiltInParameter.RBS_CURVE_HEIGHT_PARAM); if (p != null && !p.IsReadOnly) p.Set(Ft(N("heightMm"))); }
+  if (Has("diameterMm")) { var p = d.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM); if (p != null && !p.IsReadOnly) p.Set(Ft(N("diameterMm"))); }
+  n++; }
+return R("updated", n);
+
+@@ revit_mep_offset
+title: Set MEP middle elevation
+host: revit
+desc: Set the middle elevation / offset (mm above reference level) of pipes, ducts, trays and conduits.
+arg: ids | ids | Elements (omit = selection)
+arg: offsetMm | number! | Middle elevation above level
+code:
+int n = 0;
+foreach (var e in Elems("ids")) { var p = e.get_Parameter(BuiltInParameter.RBS_OFFSET_PARAM); if (p != null && !p.IsReadOnly) { p.Set(Ft(N("offsetMm"))); n++; } }
+return R("updated", n);
+
+@@ revit_insulation_add
+title: Add pipe / duct insulation
+host: revit
+desc: Add insulation (type + thickness mm) to pipes or ducts. Use lining=true for duct lining.
+arg: ids | ids | Pipes/ducts (omit = selection)
+arg: thicknessMm | number! | Thickness
+arg: type | string | Insulation/lining type
+arg: lining | boolean | Duct lining instead of insulation
+code:
+var made = new List<object>(); double t = Ft(N("thicknessMm"));
+foreach (var e in Elems("ids"))
+{
+    try
+    {
+        if (e is Pipe || e is FlexPipe || e.Category.Id.Equals(new ElementId(BuiltInCategory.OST_PipeFitting)))
+        { var it = Col().OfClass(typeof(PipeInsulationType)).FirstOrDefault(x => !Has("type") || x.Name == S("type")); made.Add(IdOf(PipeInsulation.Create(doc, e.Id, it.Id, t))); }
+        else if (B("lining"))
+        { var lt = Col().OfClass(typeof(DuctLiningType)).FirstOrDefault(x => !Has("type") || x.Name == S("type")); made.Add(IdOf(DuctLining.Create(doc, e.Id, lt.Id, t))); }
+        else
+        { var it = Col().OfClass(typeof(DuctInsulationType)).FirstOrDefault(x => !Has("type") || x.Name == S("type")); made.Add(IdOf(DuctInsulation.Create(doc, e.Id, it.Id, t))); }
+    }
+    catch (Exception ex) { Print(IdOf(e) + ": " + ex.Message); }
+}
+return R("created", made);
+
+@@ revit_mep_open_ends
+title: Open connectors (disconnects)
+host: revit
+tx: false
+desc: Every unconnected MEP connector (open pipe/duct ends, unconnected equipment) with location (mm) - like Show Disconnects.
+arg: category | string | Limit to a category (Pipes, Ducts, Mechanical Equipment...)
+code:
+IEnumerable<Element> q = Has("category") ? Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType() : Col().WhereElementIsNotElementType().Where(e => e is MEPCurve || e is FamilyInstance);
+var list = new List<object>();
+foreach (var e in q)
+{
+    ConnectorManager cm = null;
+    var mc = e as MEPCurve; var fi = e as FamilyInstance;
+    if (mc != null) cm = mc.ConnectorManager; else if (fi != null && fi.MEPModel != null) cm = fi.MEPModel.ConnectorManager;
+    if (cm == null) continue;
+    foreach (Connector c in cm.UnusedConnectors) list.Add(R("id", IdOf(e), "category", e.Category == null ? null : e.Category.Name, "domain", c.Domain.ToString(), "at", Out(c.Origin)));
+    if (list.Count > 3000) break;
+}
+return R("open", list.Count, "connectors", list);
+
+@@ revit_mep_connectors
+title: Connectors of an element
+host: revit
+tx: false
+desc: All connectors of MEP elements with domain, shape, size, flow direction, system and what they connect to.
+arg: ids | ids | Elements (omit = selection)
+code:
+var res = new List<object>();
+foreach (var e in Elems("ids"))
+{
+    ConnectorManager cm = null; var mc = e as MEPCurve; var fi = e as FamilyInstance;
+    if (mc != null) cm = mc.ConnectorManager; else if (fi != null && fi.MEPModel != null) cm = fi.MEPModel.ConnectorManager;
+    if (cm == null) continue;
+    foreach (Connector c in cm.Connectors)
+    {
+        var refs = new List<object>(); if (c.IsConnected) foreach (Connector o in c.AllRefs) if (o.Owner.Id != e.Id) refs.Add(IdOf(o.Owner.Id));
+        res.Add(R("element", IdOf(e), "id", c.Id, "domain", c.Domain.ToString(), "shape", c.Shape.ToString(), "at", Out(c.Origin),
+            "radiusMm", c.Shape == ConnectorProfileType.Round ? Mm(c.Radius) : 0, "connected", c.IsConnected, "to", refs));
+    }
+}
+return res;
+
+@@ revit_mep_equipment_report
+title: MEP equipment & fixtures
+host: revit
+tx: false
+desc: Mechanical equipment, plumbing fixtures, air terminals, sprinklers, lighting and electrical fixtures/equipment with type, level, room and system.
+code:
+var cats = new[] { BuiltInCategory.OST_MechanicalEquipment, BuiltInCategory.OST_PlumbingFixtures, BuiltInCategory.OST_DuctTerminal, BuiltInCategory.OST_Sprinklers, BuiltInCategory.OST_LightingFixtures, BuiltInCategory.OST_ElectricalFixtures, BuiltInCategory.OST_ElectricalEquipment };
+var r = new Dictionary<string, object>();
+foreach (var c in cats)
+  r[c.ToString().Replace("OST_", "")] = OfCat(c).OfType<FamilyInstance>().GroupBy(f => f.Symbol.FamilyName + " : " + f.Symbol.Name).ToDictionary(g => g.Key, g => (object)g.Count());
+return r;
+
+@@ revit_fittings_accessories
+title: Fittings & accessories count
+host: revit
+tx: false
+desc: Pipe/duct fittings and accessories counted by family/type (BOQ).
+code:
+var cats = new[] { BuiltInCategory.OST_PipeFitting, BuiltInCategory.OST_PipeAccessory, BuiltInCategory.OST_DuctFitting, BuiltInCategory.OST_DuctAccessory, BuiltInCategory.OST_CableTrayFitting, BuiltInCategory.OST_ConduitFitting };
+var r = new Dictionary<string, object>();
+foreach (var c in cats) r[c.ToString().Replace("OST_", "")] = OfCat(c).OfType<FamilyInstance>().GroupBy(f => f.Symbol.FamilyName + " : " + f.Symbol.Name).ToDictionary(g => g.Key, g => (object)g.Count());
+return r;
+
+@@ revit_electrical_circuits
+title: Electrical circuits
+host: revit
+tx: false
+desc: Electrical circuits with panel, circuit number, load name, apparent load, voltage, number of elements.
+code:
+return All<ElectricalSystem>().Select(c => (object)R("id", IdOf(c), "panel", c.PanelName, "circuit", c.CircuitNumber, "loadName", c.LoadName,
+   "apparentLoadVA", Math.Round(c.ApparentLoad, 1), "voltage", Math.Round(c.Voltage, 1), "poles", c.PolesNumber, "elements", c.Elements.Size)).ToList();
+
+@@ revit_electrical_panels
+title: Electrical panels
+host: revit
+tx: false
+desc: Panels / electrical equipment with circuits count and connected load.
+code:
+return OfCat(BuiltInCategory.OST_ElectricalEquipment).OfType<FamilyInstance>().Select(p => (object)R("id", IdOf(p), "name", PrmText(p, "Panel Name") ?? p.Name, "type", p.Symbol.Name,
+  "level", Name(p.LevelId), "totalLoad", PrmText(p, "Total Connected"))).ToList();
+
+@@ revit_circuit_create
+title: Create a power circuit
+host: revit
+desc: Create a power circuit from electrical fixtures/devices and optionally assign it to a panel.
+arg: ids | ids | Fixtures/devices (omit = selection)
+arg: panel | string | Panel name
+code:
+var ids = ElemIds("ids");
+var sys = ElectricalSystem.Create(doc, ids, ElectricalSystemType.PowerCircuit);
+if (Has("panel"))
+{
+    var panel = OfCat(BuiltInCategory.OST_ElectricalEquipment).OfType<FamilyInstance>().FirstOrDefault(p => (PrmText(p, "Panel Name") ?? p.Name) == S("panel"));
+    if (panel != null) sys.SelectPanel(panel);
+}
+return R("circuit", IdOf(sys), "number", sys.CircuitNumber);
+
+@@ revit_spaces_report
+title: MEP spaces report
+host: revit
+tx: false
+desc: Spaces with number, name, level, area, volume, zone and room association.
+code:
+return OfCat(BuiltInCategory.OST_MEPSpaces).OfType<Space>().Select(s => (object)R("id", IdOf(s), "number", s.Number, "name", s.Name, "level", s.Level == null ? null : s.Level.Name,
+  "areaM2", SqM(s.Area), "volumeM3", CuM(s.Volume), "zone", s.Zone == null ? null : s.Zone.Name, "room", s.Room == null ? null : s.Room.Name)).ToList();
+
+@@ revit_spaces_from_rooms
+title: Spaces matching rooms
+host: revit
+desc: Create an MEP space at every room location (same level) and copy name/number.
+arg: level | string | Only this level
+code:
+var made = new List<object>();
+foreach (Room r in OfCat(BuiltInCategory.OST_Rooms).OfType<Room>().Where(r => r.Location != null && r.Area > 0 && (!Has("level") || r.LevelId == LvlArg().Id)))
+{
+    var p = ((LocationPoint)r.Location).Point;
+    var s = doc.Create.NewSpace(r.Level, new UV(p.X, p.Y));
+    s.Name = r.Name; s.Number = r.Number; made.Add(IdOf(s));
+}
+return R("created", made.Count);
+
+@@ revit_hvac_zones
+title: HVAC zones
+host: revit
+tx: false
+desc: HVAC zones with their spaces.
+code:
+return All<Zone>().Select(z => (object)R("id", IdOf(z), "name", z.Name, "spaces", z.Spaces.Size, "areaM2", SqM(z.Area))).ToList();
+
+@@ revit_trays_conduits_report
+title: Cable trays & conduits
+host: revit
+tx: false
+desc: Cable trays and conduits with type, size and length; totals by type.
+code:
+var tr = All<CableTray>().ToList(); var co = All<Conduit>().ToList();
+Func<MEPCurve, double> len = m => m.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH).AsDouble();
+return R("cableTraysM", tr.GroupBy(t => Name(t.GetTypeId())).ToDictionary(g => g.Key, g => (object)Math.Round(g.Sum(len) * 0.3048, 2)),
+         "conduitsM", co.GroupBy(c => Name(c.GetTypeId()) + " " + Mm(c.Diameter) + "mm").ToDictionary(g => g.Key, g => (object)Math.Round(g.Sum(len) * 0.3048, 2)));
+
+@@ revit_lights_grid
+title: Lighting fixtures in a grid
+host: revit
+desc: Place lighting fixtures in a regular grid inside a room (spacing mm), at the ceiling height offset.
+arg: roomId | integer! | Room
+arg: type | string | Lighting fixture type
+arg: spacingMm | number | Spacing (default 2400)
+arg: heightMm | number | Height above level (default 2700)
+code:
+var room = El(I("roomId")) as Room; if (room == null) Fail("Not a room");
+var sym = TypeByName<FamilySymbol>(S("type"), BuiltInCategory.OST_LightingFixtures); if (!sym.IsActive) { sym.Activate(); doc.Regenerate(); }
+var bb = room.get_BoundingBox(null); double s = Ft(N("spacingMm", 2400)); double h = room.Level.Elevation + Ft(N("heightMm", 2700));
+var made = new List<object>();
+for (double x = bb.Min.X + s / 2; x < bb.Max.X; x += s) for (double y = bb.Min.Y + s / 2; y < bb.Max.Y; y += s)
+{
+    var p = new XYZ(x, y, room.Level.Elevation + 1);
+    if (!room.IsPointInRoom(p)) continue;
+    var fi = doc.Create.NewFamilyInstance(new XYZ(x, y, h), sym, room.Level, StructuralType.NonStructural);
+    made.Add(IdOf(fi));
+}
+return R("placed", made.Count, "ids", made);
+
+@@ revit_mep_types
+title: MEP type catalogue
+host: revit
+tx: false
+desc: Pipe types, duct types, piping/mechanical system types, cable tray and conduit types available.
+code:
+return R("pipeTypes", All<PipeType>().Select(t => (object)t.Name).ToList(), "ductTypes", All<DuctType>().Select(t => (object)t.Name).ToList(),
+  "pipingSystems", All<PipingSystemType>().Select(t => (object)(t.Name + " (" + t.SystemClassification + ")")).ToList(),
+  "mechanicalSystems", All<MechanicalSystemType>().Select(t => (object)(t.Name + " (" + t.SystemClassification + ")")).ToList(),
+  "cableTrayTypes", All<CableTrayType>().Select(t => (object)t.Name).ToList(), "conduitTypes", All<ConduitType>().Select(t => (object)t.Name).ToList());
+
+@@ revit_mep_clearance
+title: MEP headroom check
+host: revit
+tx: false
+desc: Pipes/ducts/trays whose bottom elevation is below a minimum clearance (mm) above their level - headroom QA.
+arg: minClearanceMm | number! | Minimum bottom height above level
+code:
+var bad = new List<object>(); double min = Ft(N("minClearanceMm"));
+foreach (var m in Col().OfClass(typeof(MEPCurve)).Cast<MEPCurve>())
+{
+    if (m.ReferenceLevel == null) continue;
+    var bb = m.get_BoundingBox(null); if (bb == null) continue;
+    var clear = bb.Min.Z - m.ReferenceLevel.Elevation;
+    if (clear < min) bad.Add(R("id", IdOf(m), "category", m.Category.Name, "level", m.ReferenceLevel.Name, "clearanceMm", Mm(clear)));
+}
+return R("violations", bad.Count, "elements", bad.Take(1000).ToList());
+
+@@ revit_system_elements
+title: Elements of a system
+host: revit
+tx: false
+desc: All elements belonging to an MEP system (by name or id).
+arg: system | string! | System name or id
+code:
+var s = All<MEPSystem>().FirstOrDefault(x => x.Name == S("system") || IdOf(x).ToString() == S("system"));
+if (s == null) Fail("System not found");
+var list = new List<object>(); foreach (Element e in s.Elements) list.Add(R("id", IdOf(e), "category", e.Category == null ? null : e.Category.Name, "name", e.Name));
+return R("system", s.Name, "count", list.Count, "elements", list);
+
+@@ revit_mep_color_by_system
+title: Color MEP by system
+host: revit
+desc: Color pipes/ducts in the active view by system (distinct color per system) - quick coordination view.
+code:
+var v = doc.ActiveView; var fill = SolidFill(); var palette = new[] { new Color(230, 25, 75), new Color(60, 180, 75), new Color(0, 130, 200), new Color(245, 130, 48), new Color(145, 30, 180), new Color(70, 240, 240), new Color(240, 50, 230), new Color(210, 245, 60), new Color(0, 128, 128), new Color(170, 110, 40) };
+var map = new Dictionary<string, object>(); int i = 0;
+foreach (var g in Col().OfClass(typeof(MEPCurve)).Cast<MEPCurve>().Where(m => m.MEPSystem != null).GroupBy(m => m.MEPSystem.Name))
+{
+    var c = palette[i++ % palette.Length]; var o = new OverrideGraphicSettings(); o.SetProjectionLineColor(c);
+    if (fill != ElementId.InvalidElementId) { o.SetSurfaceForegroundPatternId(fill); o.SetSurfaceForegroundPatternColor(c); }
+    foreach (var m in g) v.SetElementOverrides(m.Id, o);
+    map[g.Key] = "#" + c.Red.ToString("X2") + c.Green.ToString("X2") + c.Blue.ToString("X2");
+}
+return R("view", v.Name, "systems", map);

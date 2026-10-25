@@ -1,0 +1,428 @@
+# BURAK BIM tool pack - Revit views: templates, filters, graphics, crop, section boxes, elevations, callouts
+
+@@ revit_view_templates
+title: View templates
+host: revit
+tx: false
+desc: All view templates with view type and how many views use each.
+code:
+var views = All<View>().Where(v => !v.IsTemplate).ToList();
+return All<View>().Where(v => v.IsTemplate).Select(t => (object)R("id", IdOf(t), "name", t.Name, "viewType", t.ViewType.ToString(), "usedBy", views.Count(v => v.ViewTemplateId == t.Id))).ToList();
+
+@@ revit_view_template_apply
+title: Apply view template
+host: revit
+desc: Apply (or remove with template='none') a view template to views.
+arg: views | strings! | View names or ids
+arg: template | string! | Template name or 'none'
+code:
+ElementId tid = ElementId.InvalidElementId;
+if (S("template") != "none") { var t = All<View>().FirstOrDefault(v => v.IsTemplate && v.Name.Equals(S("template"), StringComparison.OrdinalIgnoreCase)); if (t == null) Fail("Template not found"); tid = t.Id; }
+int n = 0; var all = All<View>().Where(v => !v.IsTemplate).ToList();
+foreach (var key in SL("views")) { var v = all.FirstOrDefault(x => x.Name == key || IdOf(x).ToString() == key); if (v != null) { v.ViewTemplateId = tid; n++; } }
+return R("applied", n);
+
+@@ revit_view_template_from_view
+title: Create template from view
+host: revit
+desc: Create a new view template from an existing view.
+arg: view | string! | Source view
+arg: name | string! | Template name
+code:
+var t = ViewArg().CreateViewTemplate(); t.Name = S("name");
+return R("id", IdOf(t), "name", t.Name);
+
+@@ revit_view_duplicate
+title: Duplicate views
+host: revit
+desc: Duplicate views (plain, with detailing, or as dependent) N times with a name suffix.
+arg: views | strings! | View names or ids
+arg: mode | string | plain | detailing | dependent (default detailing)
+arg: suffix | string | Name suffix (default " - Copy")
+code:
+var opt = S("mode", "detailing") == "plain" ? ViewDuplicateOption.Duplicate : S("mode") == "dependent" ? ViewDuplicateOption.AsDependent : ViewDuplicateOption.WithDetailing;
+var all = All<View>().Where(v => !v.IsTemplate).ToList(); var made = new List<object>();
+foreach (var key in SL("views"))
+{
+    var v = all.FirstOrDefault(x => x.Name == key || IdOf(x).ToString() == key); if (v == null || !v.CanViewBeDuplicated(opt)) continue;
+    var nv = doc.GetElement(v.Duplicate(opt)) as View;
+    try { nv.Name = v.Name + S("suffix", " - Copy"); } catch { }
+    made.Add(R("id", IdOf(nv), "name", nv.Name));
+}
+return made;
+
+@@ revit_view_rename
+title: Rename views (find/replace or map)
+host: revit
+desc: Rename views by a {"old":"new"} map, or find/replace text in all view names.
+arg: map | object | {"Old name":"New name"}
+arg: find | string | Text to find
+arg: replace | string | Replacement
+code:
+int n = 0; var views = All<View>().Where(v => !v.IsTemplate && !(v is ViewSheet)).ToList();
+var map = O("map");
+if (map != null) foreach (var kv in map) { var v = views.FirstOrDefault(x => x.Name == kv.Key); if (v != null) { v.Name = Convert.ToString(kv.Value); n++; } }
+if (Has("find")) foreach (var v in views.Where(x => x.Name.Contains(S("find")))) { try { v.Name = v.Name.Replace(S("find"), S("replace", "")); n++; } catch { } }
+return R("renamed", n);
+
+@@ revit_view_properties
+title: Set view scale / detail level / style / discipline
+host: revit
+desc: Set scale (1:n), detail level (Coarse/Medium/Fine), visual style (Wireframe, HLR, Shading, ShadingWithEdges, Realistic), discipline and phase of views.
+arg: views | strings | View names/ids (default active view)
+arg: scale | integer | Scale denominator, e.g. 100
+arg: detailLevel | string | Coarse, Medium, Fine
+arg: visualStyle | string | Wireframe, HLR, Shading, ShadingWithEdges, Realistic, FlatColors
+arg: discipline | string | Architectural, Structural, Mechanical, Electrical, Plumbing, Coordination
+arg: phase | string | Phase name
+code:
+var targets = SL("views").Count == 0 ? new List<View> { doc.ActiveView } : All<View>().Where(v => SL("views").Contains(v.Name) || SL("views").Contains(IdOf(v).ToString())).ToList();
+foreach (var v in targets)
+{
+    if (Has("scale")) v.Scale = I("scale");
+    ViewDetailLevel dl; if (Has("detailLevel") && Enum.TryParse(S("detailLevel"), true, out dl)) v.DetailLevel = dl;
+    DisplayStyle ds; if (Has("visualStyle") && Enum.TryParse(S("visualStyle"), true, out ds)) v.DisplayStyle = ds;
+    ViewDiscipline vd; if (Has("discipline") && Enum.TryParse(S("discipline"), true, out vd)) v.Discipline = vd;
+    if (Has("phase")) v.get_Parameter(BuiltInParameter.VIEW_PHASE).Set(All<Phase>().First(p => p.Name == S("phase")).Id);
+}
+return R("updated", targets.Count);
+
+@@ revit_view_crop
+title: Set view crop region
+host: revit
+desc: Enable crop and set the crop box of a plan/3D view around a box (mm) or around elements with a margin.
+arg: view | string | View (default active)
+arg: min | point | Box min
+arg: max | point | Box max
+arg: ids | ids | Fit around these elements instead
+arg: marginMm | number | Margin (default 1000)
+arg: showCrop | boolean | Show crop boundary
+code:
+var v = ViewArg(); BoundingBoxXYZ box;
+if (L("ids").Count > 0)
+{
+    double mx = double.MaxValue, my = double.MaxValue, mz = double.MaxValue, Mx = double.MinValue, My = double.MinValue, Mz = double.MinValue;
+    foreach (var e in Elems("ids")) { var b = e.get_BoundingBox(null); if (b == null) continue; mx = Math.Min(mx, b.Min.X); my = Math.Min(my, b.Min.Y); mz = Math.Min(mz, b.Min.Z); Mx = Math.Max(Mx, b.Max.X); My = Math.Max(My, b.Max.Y); Mz = Math.Max(Mz, b.Max.Z); }
+    var m = Ft(N("marginMm", 1000));
+    box = new BoundingBoxXYZ { Min = new XYZ(mx - m, my - m, mz - m), Max = new XYZ(Mx + m, My + m, Mz + m) };
+}
+else box = new BoundingBoxXYZ { Min = P("min"), Max = P("max") };
+v.CropBoxActive = true; v.CropBox = box; v.CropBoxVisible = B("showCrop", true);
+return R("view", v.Name);
+
+@@ revit_section_box
+title: 3D section box around elements
+host: revit
+desc: Set (or remove) the section box of a 3D view around elements or a box (mm) - creates the 3D view if asked.
+arg: ids | ids | Elements (omit = selection)
+arg: view | string | 3D view (default active / default 3D)
+arg: marginMm | number | Margin (default 500)
+arg: remove | boolean | Turn the section box off
+arg: newViewName | string | Create a new 3D view with this name
+code:
+View3D v;
+if (Has("newViewName")) { v = View3D.CreateIsometric(doc, All<ViewFamilyType>().First(t => t.ViewFamily == ViewFamily.ThreeDimensional).Id); v.Name = S("newViewName"); }
+else v = (ViewArg() as View3D) ?? All<View3D>().First(x => !x.IsTemplate && x.Name == "{3D}");
+if (B("remove")) { v.IsSectionBoxActive = false; return R("view", v.Name, "sectionBox", false); }
+double mx = double.MaxValue, my = double.MaxValue, mz = double.MaxValue, Mx = double.MinValue, My = double.MinValue, Mz = double.MinValue;
+foreach (var e in Elems("ids")) { var b = e.get_BoundingBox(null); if (b == null) continue; mx = Math.Min(mx, b.Min.X); my = Math.Min(my, b.Min.Y); mz = Math.Min(mz, b.Min.Z); Mx = Math.Max(Mx, b.Max.X); My = Math.Max(My, b.Max.Y); Mz = Math.Max(Mz, b.Max.Z); }
+var m = Ft(N("marginMm", 500));
+v.SetSectionBox(new BoundingBoxXYZ { Min = new XYZ(mx - m, my - m, mz - m), Max = new XYZ(Mx + m, My + m, Mz + m) });
+return R("view", v.Name, "viewId", IdOf(v));
+
+@@ revit_view_range
+title: Set plan view range
+host: revit
+desc: Set top / cut plane / bottom / view depth offsets (mm, relative to the plan's level) of a floor plan.
+arg: view | string | Plan view (default active)
+arg: topMm | number | Top offset
+arg: cutMm | number | Cut plane offset
+arg: bottomMm | number | Bottom offset
+arg: depthMm | number | View depth offset
+code:
+var v = ViewArg() as ViewPlan; if (v == null) Fail("Not a plan view");
+var vr = v.GetViewRange();
+if (Has("topMm")) vr.SetOffset(PlanViewPlane.TopClipPlane, Ft(N("topMm")));
+if (Has("cutMm")) vr.SetOffset(PlanViewPlane.CutPlane, Ft(N("cutMm")));
+if (Has("bottomMm")) vr.SetOffset(PlanViewPlane.BottomClipPlane, Ft(N("bottomMm")));
+if (Has("depthMm")) vr.SetOffset(PlanViewPlane.ViewDepthPlane, Ft(N("depthMm")));
+v.SetViewRange(vr);
+return R("view", v.Name, "cutMm", Mm(vr.GetOffset(PlanViewPlane.CutPlane)));
+
+@@ revit_category_visibility
+title: Show / hide categories in view
+host: revit
+desc: Hide or show categories in views (Visibility/Graphics).
+arg: categories | strings! | Category names
+arg: hidden | boolean! | true = hide, false = show
+arg: views | strings | Views (default active)
+code:
+var targets = SL("views").Count == 0 ? new List<View> { doc.ActiveView } : All<View>().Where(v => SL("views").Contains(v.Name)).ToList(); int n = 0;
+foreach (var v in targets) foreach (var c in SL("categories")) { var cat = Cat(c); if (v.CanCategoryBeHidden(cat.Id)) { v.SetCategoryHidden(cat.Id, B("hidden")); n++; } }
+return R("changed", n);
+
+@@ revit_category_override
+title: Override category graphics
+host: revit
+desc: Color/halftone/transparency override for a whole category in a view.
+arg: category | string! | Category
+arg: color | any | "#RRGGBB" or [r,g,b]
+arg: transparency | integer | 0-100
+arg: halftone | boolean | Halftone
+arg: lineWeight | integer | Projection line weight 1-16
+arg: view | string | View (default active)
+code:
+var v = ViewArg(); var c = ColorArg("color", new Color(255, 0, 0)); var o = new OverrideGraphicSettings(); var fill = SolidFill();
+if (Has("color")) { o.SetProjectionLineColor(c); if (fill != ElementId.InvalidElementId) { o.SetSurfaceForegroundPatternId(fill); o.SetSurfaceForegroundPatternColor(c); } }
+if (Has("transparency")) o.SetSurfaceTransparency(I("transparency"));
+if (B("halftone")) o.SetHalftone(true);
+if (Has("lineWeight")) o.SetProjectionLineWeight(I("lineWeight"));
+v.SetCategoryOverrides(Cat(S("category")).Id, o);
+return R("view", v.Name);
+
+@@ revit_filters_report
+title: View filters
+host: revit
+tx: false
+desc: Parameter/selection filters in the model and which views use them (with visibility).
+code:
+var views = All<View>().ToList();
+return All<FilterElement>().Select(f => (object)R("id", IdOf(f), "name", f.Name, "kind", f.GetType().Name,
+   "usedIn", views.Where(v => { try { return v.GetFilters().Contains(f.Id); } catch { return false; } }).Select(v => (object)v.Name).ToList())).ToList();
+
+@@ revit_filter_create
+title: Create a view filter
+host: revit
+desc: Create a parameter filter for categories with one rule (equals / contains / begins / greater / less) on a parameter, optionally applying it with a color to views.
+arg: name | string! | Filter name
+arg: categories | strings! | Categories
+arg: param | string! | Parameter (name or BuiltInParameter, e.g. ALL_MODEL_MARK)
+arg: rule | string | equals (default), notequals, contains, begins, greater, less
+arg: value | any! | Value
+arg: applyToViews | strings | Views to add the filter to
+arg: color | any | Override color when applying
+arg: hide | boolean | Hide matching elements instead of coloring
+code:
+var cats = SL("categories").Select(cn => Cat(cn).Id).ToList();
+var sample = Col().WherePasses(new ElementMulticategoryFilter(cats)).WhereElementIsNotElementType().FirstElement();
+if (sample == null) Fail("No element in those categories to resolve the parameter");
+var prm = Prm(sample, S("param")); if (prm == null) Fail("Parameter not found on " + sample.Category.Name);
+var pid = prm.Id; FilterRule rule; var r = S("rule", "equals"); var val = Raw("value");
+if (prm.StorageType == StorageType.String)
+{
+    var sv = Convert.ToString(val);
+    rule = r == "contains" ? ParameterFilterRuleFactory.CreateContainsRule(pid, sv) : r == "begins" ? ParameterFilterRuleFactory.CreateBeginsWithRule(pid, sv)
+         : r == "notequals" ? ParameterFilterRuleFactory.CreateNotEqualsRule(pid, sv) : ParameterFilterRuleFactory.CreateEqualsRule(pid, sv);
+}
+else if (prm.StorageType == StorageType.Integer)
+{
+    var iv = (int)BurakBim.Shared.Json.ToDouble(val);
+    rule = r == "greater" ? ParameterFilterRuleFactory.CreateGreaterRule(pid, iv) : r == "less" ? ParameterFilterRuleFactory.CreateLessRule(pid, iv) : r == "notequals" ? ParameterFilterRuleFactory.CreateNotEqualsRule(pid, iv) : ParameterFilterRuleFactory.CreateEqualsRule(pid, iv);
+}
+else
+{
+    var dv = BurakBim.Shared.Json.ToDouble(val); bool isLen = false; try { isLen = prm.Definition.GetDataType() == SpecTypeId.Length; } catch { }
+    if (isLen) dv = Ft(dv);
+    rule = r == "greater" ? ParameterFilterRuleFactory.CreateGreaterRule(pid, dv, 1e-6) : r == "less" ? ParameterFilterRuleFactory.CreateLessRule(pid, dv, 1e-6) : ParameterFilterRuleFactory.CreateEqualsRule(pid, dv, 1e-6);
+}
+var pf = ParameterFilterElement.Create(doc, S("name"), cats, new ElementParameterFilter(rule));
+var c = ColorArg("color", new Color(255, 0, 0)); var fill = SolidFill(); int n = 0;
+foreach (var vn in SL("applyToViews"))
+{
+    var v = All<View>().FirstOrDefault(x => x.Name == vn); if (v == null) continue;
+    v.AddFilter(pf.Id);
+    if (B("hide")) v.SetFilterVisibility(pf.Id, false);
+    else { var o = new OverrideGraphicSettings(); o.SetProjectionLineColor(c); if (fill != ElementId.InvalidElementId) { o.SetSurfaceForegroundPatternId(fill); o.SetSurfaceForegroundPatternColor(c); } v.SetFilterOverrides(pf.Id, o); }
+    n++;
+}
+return R("filter", IdOf(pf), "appliedToViews", n);
+
+@@ revit_filter_apply
+title: Apply existing filter to views
+host: revit
+desc: Add an existing filter to views with color or visibility.
+arg: filter | string! | Filter name
+arg: views | strings | Views (default active)
+arg: color | any | Override color
+arg: visible | boolean | Visibility (default true)
+code:
+var f = All<FilterElement>().FirstOrDefault(x => x.Name == S("filter")); if (f == null) Fail("Filter not found");
+var targets = SL("views").Count == 0 ? new List<View> { doc.ActiveView } : All<View>().Where(v => SL("views").Contains(v.Name)).ToList();
+foreach (var v in targets)
+{
+    if (!v.GetFilters().Contains(f.Id)) v.AddFilter(f.Id);
+    v.SetFilterVisibility(f.Id, B("visible", true));
+    if (Has("color")) { var c = ColorArg("color", new Color(255, 0, 0)); var o = new OverrideGraphicSettings(); o.SetProjectionLineColor(c); var fill = SolidFill(); if (fill != ElementId.InvalidElementId) { o.SetSurfaceForegroundPatternId(fill); o.SetSurfaceForegroundPatternColor(c); } v.SetFilterOverrides(f.Id, o); }
+}
+return R("views", targets.Count);
+
+@@ revit_views_not_on_sheets
+title: Views not on sheets
+host: revit
+tx: false
+desc: Views (plans, sections, elevations, 3D, drafting, legends, schedules) not placed on any sheet.
+code:
+var placed = new HashSet<long>();
+foreach (var s in All<ViewSheet>()) { foreach (var vid in s.GetAllPlacedViews()) placed.Add(IdOf(vid)); }
+foreach (var ssi in All<ScheduleSheetInstance>()) placed.Add(IdOf(ssi.ScheduleId));
+return All<View>().Where(v => !v.IsTemplate && v.CanBePrinted && !(v is ViewSheet) && !placed.Contains(IdOf(v)))
+  .Select(v => (object)R("id", IdOf(v), "name", v.Name, "type", v.ViewType.ToString())).ToList();
+
+@@ revit_delete_unused_views
+title: Delete views not on sheets
+host: revit
+desc: Delete views not placed on sheets (keeps templates, the active view, schedules and views whose name contains a keep keyword). Dry run first.
+arg: keepContains | string | Keep views whose name contains this (e.g. "WORKING")
+arg: types | strings | Only these view types (FloorPlan, Section, ThreeD, Elevation, DraftingView...)
+arg: dryRun | boolean | Only list (default true)
+code:
+var placed = new HashSet<long>(); foreach (var s in All<ViewSheet>()) foreach (var vid in s.GetAllPlacedViews()) placed.Add(IdOf(vid));
+var cands = All<View>().Where(v => !v.IsTemplate && v.CanBePrinted && !(v is ViewSheet) && !(v is ViewSchedule) && v.Id != doc.ActiveView.Id && !placed.Contains(IdOf(v))
+   && (!Has("keepContains") || !v.Name.Contains(S("keepContains"))) && (SL("types").Count == 0 || SL("types").Contains(v.ViewType.ToString()))).ToList();
+if (!B("dryRun", true)) doc.Delete(cands.Select(v => v.Id).ToList());
+return R("count", cands.Count, "deleted", !B("dryRun", true), "views", cands.Select(v => (object)v.Name).ToList());
+
+@@ revit_elevations_create
+title: Create elevations (4 directions)
+host: revit
+desc: Create an elevation marker with up to 4 interior/exterior elevations at a point (mm) in a plan view.
+arg: point | point! | Marker location
+arg: plan | string | Plan view to host the marker (default active)
+arg: directions | strings | Any of N, E, S, W (default all)
+arg: scale | integer | Scale (default 100)
+arg: namePrefix | string | Name prefix
+code:
+var plan = ViewArg("plan") as ViewPlan; if (plan == null) Fail("Need a plan view");
+var vft = All<ViewFamilyType>().First(t => t.ViewFamily == ViewFamily.Elevation);
+var m = ElevationMarker.CreateElevationMarker(doc, vft.Id, P("point"), I("scale", 100));
+var dirs = SL("directions").Count == 0 ? new List<string> { "N", "W", "S", "E" } : SL("directions");
+var idx = new Dictionary<string, int> { { "W", 0 }, { "N", 1 }, { "E", 2 }, { "S", 3 } }; var made = new List<object>();
+foreach (var d in dirs) { if (!idx.ContainsKey(d)) continue; var ev = m.CreateElevation(doc, plan.Id, idx[d]); if (Has("namePrefix")) { try { ev.Name = S("namePrefix") + " " + d; } catch { } } made.Add(R("id", IdOf(ev), "name", ev.Name)); }
+return made;
+
+@@ revit_callout_create
+title: Create a callout
+host: revit
+desc: Create a callout in a plan/section view from two corner points (mm).
+arg: parent | string | Parent view (default active)
+arg: corner1 | point! | Corner 1
+arg: corner2 | point! | Corner 2
+arg: name | string | Name
+code:
+var parent = ViewArg("parent");
+var vft = All<ViewFamilyType>().First(t => t.ViewFamily == (parent.ViewType == ViewType.FloorPlan ? ViewFamily.FloorPlan : parent.ViewType == ViewType.CeilingPlan ? ViewFamily.CeilingPlan : ViewFamily.Detail));
+var cv = ViewSection.CreateCallout(doc, parent.Id, vft.Id, P("corner1"), P("corner2"));
+if (Has("name")) cv.Name = S("name");
+return R("id", IdOf(cv), "name", cv.Name);
+
+@@ revit_drafting_view
+title: Create drafting view
+host: revit
+desc: Create a drafting view (for 2D details) with name and scale.
+arg: name | string! | Name
+arg: scale | integer | Scale (default 10)
+code:
+var v = ViewDrafting.Create(doc, All<ViewFamilyType>().First(t => t.ViewFamily == ViewFamily.Drafting).Id);
+v.Name = S("name"); v.Scale = I("scale", 10);
+return R("id", IdOf(v));
+
+@@ revit_plans_for_levels
+title: Plans for every level
+host: revit
+desc: Create floor / ceiling / structural plans for levels that don't have one yet, optionally with a template.
+arg: kind | string | floor (default), ceiling, structural
+arg: template | string | View template to apply
+code:
+var fam = S("kind", "floor") == "ceiling" ? ViewFamily.CeilingPlan : S("kind") == "structural" ? ViewFamily.StructuralPlan : ViewFamily.FloorPlan;
+var vft = All<ViewFamilyType>().First(t => t.ViewFamily == fam);
+var vt = Has("template") ? All<View>().FirstOrDefault(v => v.IsTemplate && v.Name == S("template")) : null;
+var existing = All<ViewPlan>().Where(p => !p.IsTemplate && p.GenLevel != null && p.GetTypeId() == vft.Id).Select(p => IdOf(p.GenLevel.Id)).ToList();
+var made = new List<object>();
+foreach (var l in Levels().Where(l => !existing.Contains(IdOf(l))))
+{ var p = ViewPlan.Create(doc, vft.Id, l.Id); if (vt != null) p.ViewTemplateId = vt.Id; made.Add(p.Name); }
+return R("created", made);
+
+@@ revit_open_views
+title: Open views (UI)
+host: revit
+tx: false
+desc: Views currently open in Revit windows.
+code:
+return uidoc.GetOpenUIViews().Select(u => (object)R("id", IdOf(u.ViewId), "name", Name(u.ViewId))).ToList();
+
+@@ revit_close_views
+title: Close inactive views
+host: revit
+tx: false
+desc: Close all open view windows except the active one (keeps Revit fast).
+code:
+int n = 0;
+foreach (var u in uidoc.GetOpenUIViews()) if (u.ViewId != doc.ActiveView.Id) { u.Close(); n++; }
+return R("closed", n);
+
+@@ revit_zoom
+title: Zoom to fit / to elements
+host: revit
+tx: false
+desc: Zoom the active view to fit, or to elements.
+arg: ids | ids | Elements to zoom to (omit = zoom to fit)
+code:
+if (L("ids").Count > 0) { uidoc.ShowElements(ElemIds("ids")); return R("zoomed", "elements"); }
+var uv = uidoc.GetOpenUIViews().FirstOrDefault(u => u.ViewId == doc.ActiveView.Id); if (uv != null) uv.ZoomToFit();
+return R("zoomed", "fit");
+
+@@ revit_3d_orientation
+title: Orient 3D view
+host: revit
+desc: Set the camera of a 3D view from an eye point toward a target (mm), or to a named direction (top, front, back, left, right, iso).
+arg: view | string | 3D view (default active)
+arg: eye | point | Eye position
+arg: target | point | Target point
+arg: preset | string | top, front, back, left, right, iso
+code:
+var v = ViewArg() as View3D; if (v == null) Fail("Active view is not 3D");
+XYZ eye, fwd;
+if (Has("preset"))
+{
+    var p = S("preset").ToLowerInvariant(); var c = XYZ.Zero; double d = 300;
+    fwd = p == "top" ? -XYZ.BasisZ : p == "front" ? XYZ.BasisY : p == "back" ? -XYZ.BasisY : p == "left" ? XYZ.BasisX : p == "right" ? -XYZ.BasisX : new XYZ(-1, 1, -1).Normalize();
+    eye = c - fwd * d;
+}
+else { eye = P("eye"); fwd = (P("target") - eye).Normalize(); }
+var right = fwd.CrossProduct(XYZ.BasisZ); if (right.IsZeroLength()) right = XYZ.BasisX;
+var up = right.Normalize().CrossProduct(fwd).Normalize();
+v.SetOrientation(new ViewOrientation3D(eye, up, fwd));
+return R("view", v.Name);
+
+@@ revit_halftone_elements
+title: Halftone elements
+host: revit
+desc: Set elements halftone in a view (e.g. existing / linked context).
+arg: ids | ids | Elements (omit = selection)
+arg: view | string | View (default active)
+code:
+var v = ViewArg(); foreach (var id in ElemIds("ids")) { var o = v.GetElementOverrides(id); o.SetHalftone(true); v.SetElementOverrides(id, o); }
+return R("view", v.Name);
+
+@@ revit_view_worksets
+title: Workset visibility in view
+host: revit
+desc: Show or hide a workset in a view (workshared models).
+arg: workset | string! | Workset name
+arg: visible | boolean! | Visible
+arg: view | string | View (default active)
+code:
+var ws = new FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset).FirstOrDefault(w => w.Name == S("workset")); if (ws == null) Fail("Workset not found");
+var v = ViewArg(); v.SetWorksetVisibility(ws.Id, B("visible") ? WorksetVisibility.Visible : WorksetVisibility.Hidden);
+return R("view", v.Name);
+
+@@ revit_reveal_hidden_report
+title: Hidden elements in view
+host: revit
+tx: false
+desc: Elements permanently hidden in a view (like Reveal Hidden Elements) - QA before printing.
+arg: view | string | View (default active)
+code:
+var v = ViewArg();
+var hidden = Col().WhereElementIsNotElementType().Where(e => { try { return e.IsHidden(v); } catch { return false; } }).ToList();
+return R("view", v.Name, "count", hidden.Count, "ids", IdList(hidden.Take(2000)));

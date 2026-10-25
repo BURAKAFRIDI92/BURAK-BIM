@@ -1,0 +1,280 @@
+# BURAK BIM tool pack - Revit analysis & QA: clashes, clearances, orientation, energy data, geometry checks, costs, carbon
+
+@@ revit_clash_check
+title: Clash check between categories
+host: revit
+tx: false
+desc: Hard clashes (solid intersection) between two categories inside the model, e.g. Structural Framing vs Ducts. Optionally colors clashing elements in the active view.
+arg: categoryA | string! | First category
+arg: categoryB | string! | Second category
+arg: limit | integer | Max clashes (default 500)
+arg: colorInView | boolean | Color clashing elements red in the active view
+code:
+var a = Col().OfCategoryId(Cat(S("categoryA")).Id).WhereElementIsNotElementType().ToList(); var bc = Cat(S("categoryB")).Id;
+var clashes = new List<object>(); var hit = new HashSet<long>();
+foreach (var e in a)
+{
+    IEnumerable<Element> others;
+    try { others = Col().OfCategoryId(bc).WhereElementIsNotElementType().WherePasses(new ElementIntersectsElementFilter(e)).ToList(); } catch { continue; }
+    foreach (var o in others) { if (o.Id == e.Id) continue; clashes.Add(R("a", IdOf(e), "aName", e.Name, "b", IdOf(o), "bName", o.Name, "level", Name(e.LevelId))); hit.Add(IdOf(e)); hit.Add(IdOf(o)); if (clashes.Count >= I("limit", 500)) break; }
+    if (clashes.Count >= I("limit", 500)) break;
+}
+if (B("colorInView") && hit.Count > 0)
+{
+    using (var t = new Transaction(doc, "BURAK BIM: color clashes"))
+    {
+        t.Start(); var o = new OverrideGraphicSettings(); var red = new Color(255, 0, 0); o.SetProjectionLineColor(red); var f = SolidFill(); if (f != ElementId.InvalidElementId) { o.SetSurfaceForegroundPatternId(f); o.SetSurfaceForegroundPatternColor(red); }
+        foreach (var id in hit) doc.ActiveView.SetElementOverrides(Id(id), o); t.Commit();
+    }
+}
+return R("clashes", clashes.Count, "pairs", clashes);
+
+@@ revit_clearance_check
+title: Clearance check (distance)
+host: revit
+tx: false
+desc: Element pairs between two categories whose bounding boxes come closer than a clearance (mm) without touching - soft clashes.
+arg: categoryA | string! | First category
+arg: categoryB | string! | Second category
+arg: clearanceMm | number! | Required clearance
+code:
+double c = Ft(N("clearanceMm")); var res = new List<object>();
+var bs = Col().OfCategoryId(Cat(S("categoryB")).Id).WhereElementIsNotElementType().Select(e => new { e, bb = e.get_BoundingBox(null) }).Where(x => x.bb != null).ToList();
+foreach (var e in Col().OfCategoryId(Cat(S("categoryA")).Id).WhereElementIsNotElementType())
+{
+    var bb = e.get_BoundingBox(null); if (bb == null) continue;
+    foreach (var o in bs)
+    {
+        double dx = Math.Max(0, Math.Max(bb.Min.X - o.bb.Max.X, o.bb.Min.X - bb.Max.X)), dy = Math.Max(0, Math.Max(bb.Min.Y - o.bb.Max.Y, o.bb.Min.Y - bb.Max.Y)), dz = Math.Max(0, Math.Max(bb.Min.Z - o.bb.Max.Z, o.bb.Min.Z - bb.Max.Z));
+        var d = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        if (d > 0 && d < c) res.Add(R("a", IdOf(e), "b", IdOf(o.e), "gapMm", Mm(d)));
+        if (res.Count > 1000) break;
+    }
+}
+return R("violations", res.Count, "pairs", res);
+
+@@ revit_window_wall_ratio
+title: Window-to-wall ratio by orientation
+host: revit
+tx: false
+desc: Exterior wall area, window area and WWR per facade orientation (N/E/S/W, using true north) - energy & daylight design.
+code:
+var north = doc.ActiveProjectLocation.GetProjectPosition(XYZ.Zero).Angle;
+Func<XYZ, string> dir = n => { var a = (Math.Atan2(n.X, n.Y) * 180 / Math.PI - north * 180 / Math.PI + 360) % 360; return a < 45 || a >= 315 ? "N" : a < 135 ? "E" : a < 225 ? "S" : "W"; };
+var wall = new Dictionary<string, double> { { "N", 0 }, { "E", 0 }, { "S", 0 }, { "W", 0 } }; var win = new Dictionary<string, double> { { "N", 0 }, { "E", 0 }, { "S", 0 }, { "W", 0 } };
+foreach (var w in All<Wall>().Where(w => w.WallType.Function == WallFunction.Exterior && w.Location is LocationCurve))
+{
+    var d = dir(w.Orientation); wall[d] += w.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED).AsDouble();
+    foreach (var id in w.FindInserts(true, false, false, false))
+    { var fi = doc.GetElement(id) as FamilyInstance; if (fi == null || fi.Category == null || fi.Category.Id.Equals(new ElementId(BuiltInCategory.OST_Windows)) == false) continue;
+      var wd = fi.Symbol.get_Parameter(BuiltInParameter.WINDOW_WIDTH) ?? fi.get_Parameter(BuiltInParameter.WINDOW_WIDTH); var ht = fi.Symbol.get_Parameter(BuiltInParameter.WINDOW_HEIGHT) ?? fi.get_Parameter(BuiltInParameter.WINDOW_HEIGHT);
+      if (wd != null && ht != null) win[d] += wd.AsDouble() * ht.AsDouble(); }
+}
+var r = new Dictionary<string, object>();
+foreach (var k in wall.Keys) r[k] = R("wallM2", SqM(wall[k] + win[k]), "windowM2", SqM(win[k]), "wwrPercent", wall[k] + win[k] > 0 ? Math.Round(100 * win[k] / (wall[k] + win[k]), 1) : 0);
+return r;
+
+@@ revit_energy_settings
+title: Energy analysis settings
+host: revit
+tx: false
+desc: Energy data settings: building type, analysis mode, ground plane, project phase, core offset.
+code:
+var e = Autodesk.Revit.DB.Analysis.EnergyDataSettings.GetFromDocument(doc);
+return R("buildingType", e.BuildingType.ToString(), "mode", e.AnalysisType.ToString(), "groundPlane", Name(e.GroundPlane), "phase", Name(e.ProjectPhase),
+  "exportCategory", e.ExportCategory.ToString(), "useHVAC", e.ServiceType.ToString());
+
+@@ revit_raycast
+title: Ray cast (find what is hit)
+host: revit
+tx: false
+desc: Shoot a ray from a point in a direction (mm vectors) in a 3D view and return the first elements hit with distance - for clearance, line-of-sight and sensing.
+arg: origin | point! | Ray origin
+arg: direction | point! | Direction vector
+arg: category | string | Only this category
+arg: view | string | 3D view (default {3D})
+code:
+var v = (ViewArg() as View3D) ?? All<View3D>().First(x => !x.IsTemplate && !x.IsPerspective);
+ElementFilter f = Has("category") ? (ElementFilter)new ElementCategoryFilter(Cat(S("category")).Id) : new ElementIsElementTypeFilter(true);
+var ri = new ReferenceIntersector(f, FindReferenceTarget.Element, v);
+var hits = ri.Find(P("origin"), P("direction").Normalize()).OrderBy(h => h.Proximity).Take(10);
+return hits.Select(h => { var e = doc.GetElement(h.GetReference()); return (object)R("id", IdOf(e), "name", e.Name, "category", e.Category == null ? null : e.Category.Name, "distanceMm", Mm(h.Proximity), "point", Out(h.GetReference().GlobalPoint)); }).ToList();
+
+@@ revit_distance
+title: Distance between elements
+host: revit
+tx: false
+desc: Centre-to-centre and closest bounding-box distance (mm) between two elements.
+arg: a | integer! | Element A
+arg: b | integer! | Element B
+code:
+var ba = El(I("a")).get_BoundingBox(null); var bb = El(I("b")).get_BoundingBox(null);
+var ca = (ba.Min + ba.Max) / 2; var cb = (bb.Min + bb.Max) / 2;
+double dx = Math.Max(0, Math.Max(ba.Min.X - bb.Max.X, bb.Min.X - ba.Max.X)), dy = Math.Max(0, Math.Max(ba.Min.Y - bb.Max.Y, bb.Min.Y - ba.Max.Y)), dz = Math.Max(0, Math.Max(ba.Min.Z - bb.Max.Z, bb.Min.Z - ba.Max.Z));
+return R("centerToCenterMm", Mm(ca.DistanceTo(cb)), "gapMm", Mm(Math.Sqrt(dx * dx + dy * dy + dz * dz)), "dxMm", Mm(cb.X - ca.X), "dyMm", Mm(cb.Y - ca.Y), "dzMm", Mm(cb.Z - ca.Z));
+
+@@ revit_elements_in_room
+title: Elements in a room
+host: revit
+tx: false
+desc: Family instances located in a room (furniture, fixtures, equipment) - room data sheets.
+arg: roomId | integer! | Room
+code:
+var room = El(I("roomId")) as Room; if (room == null) Fail("Not a room");
+var list = new List<object>();
+foreach (FamilyInstance fi in Col().OfClass(typeof(FamilyInstance)))
+{
+    var lp = fi.Location as LocationPoint; if (lp == null) continue;
+    if (room.IsPointInRoom(lp.Point + new XYZ(0, 0, 0.5)) || (fi.Room != null && fi.Room.Id == room.Id))
+        list.Add(R("id", IdOf(fi), "category", fi.Category.Name, "type", fi.Symbol.FamilyName + " : " + fi.Symbol.Name));
+}
+return R("room", room.Number + " " + room.Name, "count", list.Count, "elements", list);
+
+@@ revit_tiny_elements
+title: Tiny / zero-length elements
+host: revit
+tx: false
+desc: Line-based elements shorter than a threshold (mm) - drafting mistakes that cause warnings.
+arg: minMm | number | Threshold (default 10)
+code:
+double t = Ft(N("minMm", 10));
+return Col().WhereElementIsNotElementType().Where(e => { var lc = e.Location as LocationCurve; return lc != null && lc.Curve.Length < t; })
+  .Select(e => (object)R("id", IdOf(e), "category", e.Category == null ? null : e.Category.Name, "lengthMm", Mm(((LocationCurve)e.Location).Curve.Length))).ToList();
+
+@@ revit_overlapping_walls
+title: Overlapping walls
+host: revit
+tx: false
+desc: Collinear walls that overlap each other (typical 'highlighted walls overlap' issue).
+code:
+var walls = All<Wall>().Where(w => w.Location is LocationCurve && ((LocationCurve)w.Location).Curve is Line).ToList(); var res = new List<object>();
+for (int i = 0; i < walls.Count; i++) for (int j = i + 1; j < walls.Count; j++)
+{
+    var a = (Line)((LocationCurve)walls[i].Location).Curve; var b = (Line)((LocationCurve)walls[j].Location).Curve;
+    if (walls[i].LevelId != walls[j].LevelId) continue;
+    if (Math.Abs(Math.Abs(a.Direction.DotProduct(b.Direction)) - 1) > 1e-4) continue;
+    var ub = Line.CreateUnbound(a.Origin, a.Direction);
+    if (ub.Distance(b.GetEndPoint(0)) > 0.01 || ub.Distance(b.GetEndPoint(1)) > 0.01) continue;
+    double t0 = (b.GetEndPoint(0) - a.GetEndPoint(0)).DotProduct(a.Direction), t1 = (b.GetEndPoint(1) - a.GetEndPoint(0)).DotProduct(a.Direction);
+    double lo = Math.Max(0, Math.Min(t0, t1)), hi = Math.Min(a.Length, Math.Max(t0, t1));
+    if (hi - lo > 0.01) res.Add(R("a", IdOf(walls[i]), "b", IdOf(walls[j]), "overlapMm", Mm(hi - lo)));
+}
+return R("overlaps", res.Count, "pairs", res);
+
+@@ revit_unjoined_walls
+title: Wall ends not joined
+host: revit
+tx: false
+desc: Wall ends that don't join any other wall (open corners) - QA for room boundaries and drawings.
+code:
+var res = new List<object>();
+foreach (var w in All<Wall>().Where(x => x.Location is LocationCurve))
+{
+    var lc = (LocationCurve)w.Location;
+    for (int end = 0; end < 2; end++) { var joined = lc.get_ElementsAtJoin(end); if (joined == null || joined.Size <= 1) res.Add(R("wall", IdOf(w), "end", end, "point", Out(lc.Curve.GetEndPoint(end)))); }
+}
+return R("openEnds", res.Count, "ends", res.Take(1000).ToList());
+
+@@ revit_elements_below_level
+title: Elements below their level / floating
+host: revit
+tx: false
+desc: Family instances whose base is more than a tolerance (mm) below their host level, or floating above - placement QA.
+arg: toleranceMm | number | Tolerance (default 50)
+code:
+double tol = Ft(N("toleranceMm", 50)); var res = new List<object>();
+foreach (FamilyInstance fi in Col().OfClass(typeof(FamilyInstance)))
+{
+    var lv = doc.GetElement(fi.LevelId) as Level; var bb = fi.get_BoundingBox(null); if (lv == null || bb == null) continue;
+    var d = bb.Min.Z - lv.Elevation;
+    if (d < -tol) res.Add(R("id", IdOf(fi), "category", fi.Category.Name, "level", lv.Name, "belowLevelMm", Mm(-d)));
+}
+return R("count", res.Count, "elements", res.Take(1000).ToList());
+
+@@ revit_cost_estimate
+title: Cost estimate (type Cost x quantity)
+host: revit
+tx: false
+desc: Quick estimate: type 'Cost' parameter x count (or x area/volume/length for host and line elements), per category.
+arg: categories | strings | Categories (default all model categories with Cost)
+arg: basis | string | count (default), area, volume, length
+code:
+var totals = new Dictionary<string, double>(); double grand = 0;
+foreach (var e in Col().WhereElementIsNotElementType().Where(e => e.Category != null && e.Category.CategoryType == CategoryType.Model && (SL("categories").Count == 0 || SL("categories").Contains(e.Category.Name))))
+{
+    var t = doc.GetElement(e.GetTypeId()); if (t == null) continue; var cp = t.get_Parameter(BuiltInParameter.ALL_MODEL_COST); if (cp == null || !cp.HasValue || cp.AsDouble() == 0) continue;
+    double q = 1; var b = S("basis", "count");
+    if (b == "area") { var p = e.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED); q = p == null ? 0 : p.AsDouble() * 0.09290304; }
+    else if (b == "volume") { var p = e.get_Parameter(BuiltInParameter.HOST_VOLUME_COMPUTED); q = p == null ? 0 : p.AsDouble() * 0.0283168; }
+    else if (b == "length") { var p = e.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH); q = p == null ? 0 : p.AsDouble() * 0.3048; }
+    var v = cp.AsDouble() * q; grand += v; totals[e.Category.Name] = (totals.ContainsKey(e.Category.Name) ? totals[e.Category.Name] : 0) + v;
+}
+return R("basis", S("basis", "count"), "total", Math.Round(grand, 2), "byCategory", totals.ToDictionary(k => k.Key, k => (object)Math.Round(k.Value, 2)));
+
+@@ revit_embodied_carbon
+title: Embodied carbon estimate
+host: revit
+tx: false
+desc: Embodied carbon (kgCO2e) = material volume x density x factor. Supply factors per material keyword, e.g. {"Concrete":[2400,0.13],"Steel":[7850,1.55],"Brick":[1800,0.24]} (density kg/m3, kgCO2e/kg).
+arg: factors | object! | {keyword: [density, kgCO2e per kg]}
+code:
+var f = O("factors"); var res = new Dictionary<string, double>(); double total = 0;
+foreach (var e in Col().WhereElementIsNotElementType().Where(x => x.Category != null && x.Category.CategoryType == CategoryType.Model))
+  foreach (var mid in e.GetMaterialIds(false))
+  {
+      var name = Name(mid) ?? ""; var key = f.Keys.FirstOrDefault(k => name.IndexOf(k, StringComparison.OrdinalIgnoreCase) >= 0); if (key == null) continue;
+      var arr = f[key] as List<object>; if (arr == null || arr.Count < 2) continue;
+      var kg = CuM(e.GetMaterialVolume(mid)) * BurakBim.Shared.Json.ToDouble(arr[0]) * BurakBim.Shared.Json.ToDouble(arr[1]);
+      res[key] = (res.ContainsKey(key) ? res[key] : 0) + kg; total += kg;
+  }
+return R("totalTonnesCO2e", Math.Round(total / 1000, 2), "byMaterial", res.ToDictionary(k => k.Key, k => (object)Math.Round(k.Value / 1000, 3)));
+
+@@ revit_level_area_summary
+title: Gross & net area per level
+host: revit
+tx: false
+desc: Per level: floor area (slabs), room net area, number of rooms - area schedules at a glance.
+code:
+var res = new Dictionary<string, object>();
+foreach (var l in Levels())
+{
+    var floors = All<Floor>().Where(f => f.LevelId == l.Id).Sum(f => f.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED).AsDouble());
+    var rooms = OfCat(BuiltInCategory.OST_Rooms).Cast<Room>().Where(r => r.LevelId == l.Id && r.Area > 0).ToList();
+    res[l.Name] = R("floorAreaM2", SqM(floors), "roomNetAreaM2", SqM(rooms.Sum(r => r.Area)), "rooms", rooms.Count);
+}
+return res;
+
+@@ revit_compare_types_usage
+title: Type usage statistics
+host: revit
+tx: false
+desc: For each category: number of types loaded vs. used, most used types - helps standardisation.
+code:
+var res = new Dictionary<string, object>();
+foreach (var g in Col().WhereElementIsNotElementType().Where(e => e.Category != null && e.Category.CategoryType == CategoryType.Model && e.GetTypeId() != ElementId.InvalidElementId).GroupBy(e => e.Category.Name))
+{
+    var used = g.GroupBy(e => Name(e.GetTypeId())).OrderByDescending(x => x.Count()).ToList();
+    var cat = g.First().Category;
+    res[g.Key] = R("typesLoaded", Col().OfCategoryId(cat.Id).WhereElementIsElementType().GetElementCount(), "typesUsed", used.Count, "top", used.Take(5).ToDictionary(x => x.Key ?? "?", x => (object)x.Count()));
+}
+return res;
+
+@@ revit_section_through
+title: Quick section through elements
+host: revit
+desc: Create a section view cutting through elements (aligned with the first linear element, or along X) with a margin.
+arg: ids | ids | Elements (omit = selection)
+arg: name | string | View name
+arg: marginMm | number | Margin (default 1000)
+code:
+var els = Elems("ids"); double mx = double.MaxValue, my = double.MaxValue, mz = double.MaxValue, Mx = double.MinValue, My = double.MinValue, Mz = double.MinValue;
+foreach (var e in els) { var b = e.get_BoundingBox(null); if (b == null) continue; mx = Math.Min(mx, b.Min.X); my = Math.Min(my, b.Min.Y); mz = Math.Min(mz, b.Min.Z); Mx = Math.Max(Mx, b.Max.X); My = Math.Max(My, b.Max.Y); Mz = Math.Max(Mz, b.Max.Z); }
+var m = Ft(N("marginMm", 1000)); var lc = els[0].Location as LocationCurve;
+var dir = lc != null && lc.Curve is Line ? ((Line)lc.Curve).Direction : XYZ.BasisX; dir = new XYZ(dir.X, dir.Y, 0).Normalize();
+var c = new XYZ((mx + Mx) / 2, (my + My) / 2, (mz + Mz) / 2); var view = dir.CrossProduct(XYZ.BasisZ);
+var t = Transform.Identity; t.Origin = c; t.BasisX = dir; t.BasisY = XYZ.BasisZ; t.BasisZ = view;
+var half = Math.Max(Mx - mx, My - my) / 2 + m;
+var box = new BoundingBoxXYZ { Transform = t, Min = new XYZ(-half, -(Mz - mz) / 2 - m, -m), Max = new XYZ(half, (Mz - mz) / 2 + m, m) };
+var vs = ViewSection.CreateSection(doc, All<ViewFamilyType>().First(x => x.ViewFamily == ViewFamily.Section).Id, box);
+if (Has("name")) vs.Name = S("name");
+return R("id", IdOf(vs), "name", vs.Name);

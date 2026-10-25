@@ -1,0 +1,639 @@
+# BURAK BIM tool pack - Revit: elements, selection, transforms, parameters, groups, geometry
+# Snippets run inside Revit (2022-2027). Lengths/coordinates in mm. Elems("ids") = ids argument or current selection.
+
+@@ revit_count_by_category
+title: Count elements by category
+host: revit
+tx: false
+desc: Number of model elements per category in the whole model or the active view.
+arg: activeViewOnly | boolean | Only the active view
+code:
+var col = B("activeViewOnly") ? ColView(doc.ActiveView) : Col();
+var groups = col.WhereElementIsNotElementType().Where(e => e.Category != null && e.Category.CategoryType == CategoryType.Model)
+    .GroupBy(e => e.Category.Name).OrderByDescending(g => g.Count());
+var r = new Dictionary<string, object>();
+foreach (var g in groups) r[g.Key] = g.Count();
+return r;
+
+@@ revit_count_by_type
+title: Count elements by type
+host: revit
+tx: false
+desc: Instance count per family/type for a category (e.g. Doors, Windows, Structural Columns).
+arg: category | string! | Category name
+code:
+var cat = Cat(S("category"));
+var r = new Dictionary<string, object>();
+foreach (var g in Col().OfCategoryId(cat.Id).WhereElementIsNotElementType().GroupBy(e => { var t = doc.GetElement(e.GetTypeId()) as ElementType; return t == null ? "(no type)" : t.FamilyName + " : " + t.Name; }).OrderBy(g => g.Key))
+    r[g.Key] = g.Count();
+return R("category", cat.Name, "types", r);
+
+@@ revit_select_by_category
+title: Select all of a category
+host: revit
+tx: false
+desc: Select every element of a category (whole model or active view) in Revit and return the ids.
+arg: category | string! | Category name
+arg: activeViewOnly | boolean | Only elements visible in the active view
+code:
+var col = B("activeViewOnly") ? ColView(doc.ActiveView) : Col();
+var ids = col.OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType().ToElementIds();
+uidoc.Selection.SetElementIds(ids);
+return R("selected", ids.Count, "ids", IdList(ids));
+
+@@ revit_select_by_type
+title: Select all instances of a type
+host: revit
+tx: false
+desc: Select every instance of a family type (by type name, optionally category).
+arg: typeName | string! | Type name (exact or contains)
+arg: category | string | Category to limit the search
+code:
+var tn = S("typeName");
+IEnumerable<Element> q = Col().WhereElementIsNotElementType();
+if (Has("category")) q = Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType();
+var hits = q.Where(e => { var t = doc.GetElement(e.GetTypeId()); return t != null && t.Name.IndexOf(tn, StringComparison.OrdinalIgnoreCase) >= 0; }).Select(e => e.Id).ToList();
+uidoc.Selection.SetElementIds(hits);
+return R("selected", hits.Count, "ids", IdList(hits));
+
+@@ revit_select_similar
+title: Select similar (same type)
+host: revit
+tx: false
+desc: Select all instances that share the type of the given/selected elements.
+arg: ids | ids | Seed elements (omit = selection)
+code:
+var typeIds = new HashSet<long>(Elems("ids").Select(e => IdOf(e.GetTypeId())));
+var hits = Col().WhereElementIsNotElementType().Where(e => typeIds.Contains(IdOf(e.GetTypeId()))).Select(e => e.Id).ToList();
+uidoc.Selection.SetElementIds(hits);
+return R("selected", hits.Count);
+
+@@ revit_select_in_box
+title: Select elements inside a box
+host: revit
+tx: false
+desc: Elements whose bounding box is inside or intersects a 3D box (mm). Optional category.
+arg: min | point! | Box min
+arg: max | point! | Box max
+arg: category | string | Category filter
+arg: inside | boolean | Fully inside only (default false = intersecting)
+code:
+var ol = new Outline(P("min"), P("max"));
+ElementFilter f = B("inside") ? (ElementFilter)new BoundingBoxIsInsideFilter(ol) : new BoundingBoxIntersectsFilter(ol);
+var col = Col().WhereElementIsNotElementType().WherePasses(f);
+if (Has("category")) col = col.OfCategoryId(Cat(S("category")).Id);
+var ids = col.ToElementIds();
+uidoc.Selection.SetElementIds(ids);
+return R("count", ids.Count, "elements", DescAll(ids.Select(i => doc.GetElement(i)), 300));
+
+@@ revit_find_by_mark
+title: Find elements by Mark
+host: revit
+tx: false
+desc: Elements whose Mark parameter equals / contains a value.
+arg: mark | string! | Mark value
+arg: contains | boolean | Partial match
+code:
+var m = S("mark"); bool c = B("contains");
+var hits = Col().WhereElementIsNotElementType().Where(e => { var p = e.get_Parameter(BuiltInParameter.ALL_MODEL_MARK); var v = p == null ? null : p.AsString(); return v != null && (c ? v.IndexOf(m, StringComparison.OrdinalIgnoreCase) >= 0 : string.Equals(v, m, StringComparison.OrdinalIgnoreCase)); }).ToList();
+return R("count", hits.Count, "elements", DescAll(hits));
+
+@@ revit_param_distinct_values
+title: Distinct values of a parameter
+host: revit
+tx: false
+desc: All distinct values (with counts) of a parameter across a category - great for QA and naming audits.
+arg: category | string! | Category
+arg: param | string! | Parameter name
+code:
+var r = new Dictionary<string, object>();
+foreach (var g in Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType().GroupBy(e => PrmText(e, S("param")) ?? "(empty)").OrderBy(g => g.Key))
+    r[g.Key] = g.Count();
+return r;
+
+@@ revit_param_bulk_set
+title: Bulk set a parameter by filter
+host: revit
+desc: Set a parameter on every element of a category that matches an optional condition (param equals value).
+arg: category | string! | Category
+arg: param | string! | Parameter to set
+arg: value | any! | New value (numbers for lengths are mm)
+arg: whereParam | string | Only where this parameter...
+arg: whereValue | string | ...equals this value
+code:
+int ok = 0, fail = 0;
+foreach (var e in Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType().ToList())
+{
+    if (Has("whereParam") && !string.Equals(PrmText(e, S("whereParam")) ?? "", S("whereValue") ?? "", StringComparison.OrdinalIgnoreCase)) continue;
+    try { SetPrm(e, S("param"), Raw("value")); ok++; } catch { fail++; }
+}
+return R("updated", ok, "failed", fail);
+
+@@ revit_param_copy
+title: Copy one parameter to another
+host: revit
+desc: Copy the value of parameter A into parameter B for elements (ids/selection or a category).
+arg: from | string! | Source parameter
+arg: to | string! | Target parameter
+arg: category | string | Category (instead of ids)
+arg: ids | ids | Elements
+code:
+var els = Has("category") ? Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType().ToList() : Elems("ids");
+int n = 0;
+foreach (var e in els) { var v = PrmText(e, S("from")); if (v == null) continue; try { SetPrm(e, S("to"), v); n++; } catch { } }
+return R("copied", n);
+
+@@ revit_param_find_empty
+title: Elements with empty parameter
+host: revit
+tx: false
+desc: Elements of a category where a (required) parameter is empty - data completeness check.
+arg: category | string! | Category
+arg: param | string! | Parameter
+code:
+var hits = Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType().Where(e => string.IsNullOrEmpty(PrmText(e, S("param")))).ToList();
+return R("count", hits.Count, "ids", IdList(hits));
+
+@@ revit_project_parameters
+title: Project & shared parameter bindings
+host: revit
+tx: false
+desc: All project/shared parameters bound in the model with their categories and instance/type binding.
+code:
+var list = new List<object>();
+var it = doc.ParameterBindings.ForwardIterator();
+while (it.MoveNext())
+{
+    var def = it.Key; var b = it.Current as ElementBinding;
+    var cats = new List<object>();
+    if (b != null) foreach (Category c in b.Categories) cats.Add(c.Name);
+    list.Add(R("name", def.Name, "binding", b is InstanceBinding ? "instance" : "type", "categories", cats));
+}
+return list;
+
+@@ revit_add_shared_parameter
+title: Add a shared parameter to categories
+host: revit
+desc: Create (if needed) a shared parameter in the shared parameter file and bind it to categories. Data type: text, integer, number, length, area, volume, yesno.
+arg: name | string! | Parameter name
+arg: categories | strings! | Category names
+arg: dataType | string | text (default), integer, number, length, area, volume, yesno
+arg: group | string | Shared parameter group name (default BURAK BIM)
+arg: typeBinding | boolean | Bind as type parameter (default instance)
+arg: sharedFile | string | Shared parameter .txt file (default: current file or <install>\config\shared-parameters.txt)
+code:
+var file = S("sharedFile") ?? app.SharedParametersFilename;
+if (string.IsNullOrEmpty(file)) file = System.IO.Path.Combine(BurakBim.Shared.BurakPaths.ConfigDir, "shared-parameters.txt");
+if (!System.IO.File.Exists(file)) System.IO.File.WriteAllText(file, "");
+app.SharedParametersFilename = file;
+var df = app.OpenSharedParameterFile();
+var grp = df.Groups.get_Item(S("group", "BURAK BIM")) ?? df.Groups.Create(S("group", "BURAK BIM"));
+var dt = (S("dataType", "text") ?? "text").ToLowerInvariant();
+ForgeTypeId spec = dt == "integer" ? SpecTypeId.Int.Integer : dt == "number" ? SpecTypeId.Number : dt == "length" ? SpecTypeId.Length : dt == "area" ? SpecTypeId.Area : dt == "volume" ? SpecTypeId.Volume : dt == "yesno" ? SpecTypeId.Boolean.YesNo : SpecTypeId.String.Text;
+var def = grp.Definitions.get_Item(S("name")) ?? grp.Definitions.Create(new ExternalDefinitionCreationOptions(S("name"), spec));
+var cs = app.Create.NewCategorySet();
+foreach (var c in SL("categories")) cs.Insert(Cat(c));
+Binding bind = B("typeBinding") ? (Binding)app.Create.NewTypeBinding(cs) : app.Create.NewInstanceBinding(cs);
+bool ok = doc.ParameterBindings.Insert(def, bind, GroupTypeId.Data) || doc.ParameterBindings.ReInsert(def, bind, GroupTypeId.Data);
+return R("parameter", def.Name, "bound", ok, "file", file);
+
+@@ revit_pin
+title: Pin / unpin elements
+host: revit
+desc: Pin (or unpin) elements so they cannot be moved accidentally.
+arg: ids | ids | Elements (omit = selection)
+arg: unpin | boolean | Unpin instead
+code:
+int n = 0;
+foreach (var e in Elems("ids")) { if (e.Pinned != !B("unpin")) { e.Pinned = !B("unpin"); n++; } }
+return R("changed", n);
+
+@@ revit_mirror
+title: Mirror elements
+host: revit
+desc: Mirror elements about a vertical plane through two points (mm), copying by default.
+arg: ids | ids | Elements (omit = selection)
+arg: p1 | point! | First point on mirror line
+arg: p2 | point! | Second point on mirror line
+arg: keepOriginal | boolean | Keep the originals (default true)
+code:
+var a = P("p1"); var b = P("p2");
+var normal = (b - a).CrossProduct(XYZ.BasisZ).Normalize();
+var plane = Plane.CreateByNormalAndOrigin(normal, a);
+ElementTransformUtils.MirrorElements(doc, ElemIds("ids"), plane, B("keepOriginal", true));
+return R("mirrored", ElemIds("ids").Count);
+
+@@ revit_array_linear
+title: Linear array (copies)
+host: revit
+desc: Copy elements N times along a vector (mm), like Revit Array.
+arg: ids | ids | Elements (omit = selection)
+arg: offset | point! | Step vector between copies [dx,dy,dz]
+arg: count | integer! | Number of copies
+code:
+var ids = ElemIds("ids"); var v = P("offset"); var created = new List<object>();
+for (int i = 1; i <= I("count"); i++) created.AddRange(IdList(ElementTransformUtils.CopyElements(doc, ids, v.Multiply(i))));
+return R("created", created.Count, "ids", created);
+
+@@ revit_copy_to_levels
+title: Copy elements to other levels
+host: revit
+desc: Copy elements vertically to other levels (offset = level elevation difference), e.g. typical floors.
+arg: ids | ids | Elements (omit = selection)
+arg: fromLevel | string! | Level the elements are on
+arg: toLevels | strings! | Target level names
+code:
+var ids = ElemIds("ids"); var from = Lvl(S("fromLevel")); var r = new Dictionary<string, object>();
+foreach (var ln in SL("toLevels")) { var to = Lvl(ln); r[ln] = IdList(ElementTransformUtils.CopyElements(doc, ids, new XYZ(0, 0, to.Elevation - from.Elevation))); }
+return r;
+
+@@ revit_change_type
+title: Change type of elements
+host: revit
+desc: Swap elements to another type of the same category (e.g. wall types, door sizes).
+arg: ids | ids | Elements (omit = selection)
+arg: typeName | string! | Target type name (or 'Family : Type')
+code:
+int n = 0;
+foreach (var e in Elems("ids"))
+{
+    var cur = doc.GetElement(e.GetTypeId()) as ElementType;
+    if (cur == null || e.Category == null) continue;
+    var tn = S("typeName");
+    var target = Col().OfCategoryId(e.Category.Id).WhereElementIsElementType().Cast<ElementType>()
+        .FirstOrDefault(t => string.Equals(t.Name, tn, StringComparison.OrdinalIgnoreCase) || string.Equals(t.FamilyName + " : " + t.Name, tn, StringComparison.OrdinalIgnoreCase));
+    if (target == null) Fail("Type '" + tn + "' not found in category " + e.Category.Name);
+    e.ChangeTypeId(target.Id); n++;
+}
+return R("changed", n);
+
+@@ revit_duplicate_type
+title: Duplicate a type
+host: revit
+desc: Duplicate any element type under a new name, optionally setting type parameters.
+arg: typeName | string! | Existing type name
+arg: newName | string! | New type name
+arg: category | string | Category (to disambiguate)
+arg: values | object | Type parameter values to set on the new type
+code:
+IEnumerable<Element> q = Has("category") ? Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsElementType() : Col().WhereElementIsElementType();
+var t = q.Cast<ElementType>().FirstOrDefault(x => string.Equals(x.Name, S("typeName"), StringComparison.OrdinalIgnoreCase));
+if (t == null) Fail("Type not found: " + S("typeName"));
+var nt = t.Duplicate(S("newName"));
+var vals = O("values");
+if (vals != null) foreach (var kv in vals) SetPrm(nt, kv.Key, kv.Value);
+return R("id", IdOf(nt), "name", nt.Name);
+
+@@ revit_rename_type
+title: Rename a type
+host: revit
+desc: Rename an element type.
+arg: typeName | string! | Current name
+arg: newName | string! | New name
+arg: category | string | Category
+code:
+IEnumerable<Element> q = Has("category") ? Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsElementType() : Col().WhereElementIsElementType();
+var t = q.FirstOrDefault(x => string.Equals(x.Name, S("typeName"), StringComparison.OrdinalIgnoreCase));
+if (t == null) Fail("Type not found");
+t.Name = S("newName");
+return R("renamed", t.Name);
+
+@@ revit_unused_types
+title: Unused types
+host: revit
+tx: false
+desc: Element types of a category with zero placed instances (purge candidates).
+arg: category | string! | Category
+code:
+var cat = Cat(S("category"));
+var used = new HashSet<long>(Col().OfCategoryId(cat.Id).WhereElementIsNotElementType().Select(e => IdOf(e.GetTypeId())));
+var unused = Col().OfCategoryId(cat.Id).WhereElementIsElementType().Where(t => !used.Contains(IdOf(t.Id))).Select(t => (object)R("id", IdOf(t), "name", t.Name)).ToList();
+return R("category", cat.Name, "unused", unused);
+
+@@ revit_purge_unused
+title: Purge unused (Performance Adviser)
+host: revit
+desc: Delete unused families and types using Revit's own 'unused families and types' rule. Optionally dry run.
+arg: dryRun | boolean | Only report (default true)
+code:
+var adviser = PerformanceAdviser.GetPerformanceAdviser();
+var ids = adviser.GetAllRuleIds().Where(id => adviser.GetRuleName(id).IndexOf("unused", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+var failures = adviser.ExecuteRules(doc, ids);
+var del = new List<ElementId>();
+foreach (var f in failures) del.AddRange(f.GetFailingElements());
+if (!B("dryRun", true) && del.Count > 0) doc.Delete(del);
+return R("unusedElements", del.Count, "deleted", !B("dryRun", true), "rules", ids.Select(i => (object)adviser.GetRuleName(i)).ToList());
+
+@@ revit_group_create
+title: Create a model group
+host: revit
+desc: Create a group from elements and optionally name it.
+arg: ids | ids | Elements (omit = selection)
+arg: name | string | Group type name
+code:
+var g = doc.Create.NewGroup(ElemIds("ids"));
+if (Has("name")) g.GroupType.Name = S("name");
+return R("groupId", IdOf(g), "type", g.GroupType.Name);
+
+@@ revit_group_ungroup
+title: Ungroup
+host: revit
+desc: Ungroup group instances (members stay in the model).
+arg: ids | ids | Group ids (omit = selection)
+code:
+int n = 0; var members = new List<object>();
+foreach (var e in Elems("ids")) { var g = e as Group; if (g == null) continue; members.AddRange(IdList(g.UngroupMembers())); n++; }
+return R("ungrouped", n, "members", members);
+
+@@ revit_groups_list
+title: List groups
+host: revit
+tx: false
+desc: Group types with instance counts and member counts.
+code:
+return All<GroupType>().Select(gt => (object)R("type", gt.Name, "id", IdOf(gt), "instances", gt.Groups.Size, "category", gt.Category == null ? null : gt.Category.Name)).ToList();
+
+@@ revit_assembly_create
+title: Create an assembly
+host: revit
+desc: Create an assembly instance from elements (prefabrication / shop drawings).
+arg: ids | ids | Elements (omit = selection)
+arg: name | string | Assembly type name
+code:
+var ids = ElemIds("ids");
+var first = doc.GetElement(ids[0]);
+var a = AssemblyInstance.Create(doc, ids, first.Category.Id);
+doc.Regenerate();
+if (Has("name")) a.AssemblyTypeName = S("name");
+return R("assemblyId", IdOf(a), "name", a.AssemblyTypeName);
+
+@@ revit_assemblies_list
+title: List assemblies
+host: revit
+tx: false
+desc: Assembly instances with member counts.
+code:
+return All<AssemblyInstance>().Select(a => (object)R("id", IdOf(a), "name", a.AssemblyTypeName, "members", a.GetMemberIds().Count)).ToList();
+
+@@ revit_join_geometry
+title: Join geometry
+host: revit
+desc: Join the geometry of element pairs (e.g. walls with floors/columns) - first element is joined with each of the others.
+arg: ids | ids! | First id = main element, rest = elements to join
+code:
+var ids = L("ids"); var a = El(ids[0]); int n = 0;
+foreach (var i in ids.Skip(1)) { var b = El(i); if (!JoinGeometryUtils.AreElementsJoined(doc, a, b)) { JoinGeometryUtils.JoinGeometry(doc, a, b); n++; } }
+return R("joined", n);
+
+@@ revit_unjoin_geometry
+title: Unjoin geometry
+host: revit
+desc: Unjoin the first element from each of the others.
+arg: ids | ids! | First id = main element, rest = others
+code:
+var ids = L("ids"); var a = El(ids[0]); int n = 0;
+foreach (var i in ids.Skip(1)) { var b = El(i); if (JoinGeometryUtils.AreElementsJoined(doc, a, b)) { JoinGeometryUtils.UnjoinGeometry(doc, a, b); n++; } }
+return R("unjoined", n);
+
+@@ revit_auto_join_category
+title: Auto-join two categories
+host: revit
+desc: Join geometry of every intersecting pair between two categories (e.g. Structural Columns with Floors).
+arg: categoryA | string! | First category (cutting)
+arg: categoryB | string! | Second category
+code:
+int n = 0;
+var a = Col().OfCategoryId(Cat(S("categoryA")).Id).WhereElementIsNotElementType().ToList();
+var bCat = Cat(S("categoryB")).Id;
+foreach (var e in a)
+{
+    foreach (var o in Col().OfCategoryId(bCat).WhereElementIsNotElementType().WherePasses(new ElementIntersectsElementFilter(e)).ToList())
+    {
+        if (JoinGeometryUtils.AreElementsJoined(doc, e, o)) continue;
+        try { JoinGeometryUtils.JoinGeometry(doc, e, o); n++; } catch { }
+    }
+}
+return R("joined", n);
+
+@@ revit_switch_join_order
+title: Switch join order
+host: revit
+desc: Switch which of two joined elements cuts the other.
+arg: a | integer! | Element A
+arg: b | integer! | Element B
+code:
+JoinGeometryUtils.SwitchJoinOrder(doc, El(I("a")), El(I("b")));
+return R("cutting", IdOf(JoinGeometryUtils.IsCuttingElementInJoin(doc, El(I("a")), El(I("b"))) ? El(I("a")) : El(I("b"))));
+
+@@ revit_element_materials
+title: Materials of elements
+host: revit
+tx: false
+desc: Materials used by elements with area (m2) and volume (m3) per material.
+arg: ids | ids | Elements (omit = selection)
+code:
+var list = new List<object>();
+foreach (var e in Elems("ids"))
+{
+    var mats = new List<object>();
+    foreach (var mid in e.GetMaterialIds(false))
+        mats.Add(R("material", Name(mid), "areaM2", SqM(e.GetMaterialArea(mid, false)), "volumeM3", CuM(e.GetMaterialVolume(mid))));
+    list.Add(R("id", IdOf(e), "name", e.Name, "materials", mats));
+}
+return list;
+
+@@ revit_element_geometry_summary
+title: Geometry summary
+host: revit
+tx: false
+desc: Solid volume, surface area, face/edge counts and bounding box of elements.
+arg: ids | ids | Elements (omit = selection)
+code:
+var list = new List<object>();
+var opt = new Options { DetailLevel = ViewDetailLevel.Fine };
+foreach (var e in Elems("ids"))
+{
+    double vol = 0, area = 0; int faces = 0, edges = 0, solids = 0;
+    var stack = new Stack<GeometryElement>(); var g0 = e.get_Geometry(opt); if (g0 != null) stack.Push(g0);
+    while (stack.Count > 0)
+        foreach (GeometryObject o in stack.Pop())
+        {
+            var s = o as Solid; var gi = o as GeometryInstance;
+            if (s != null && s.Volume > 0) { solids++; vol += s.Volume; area += s.SurfaceArea; faces += s.Faces.Size; edges += s.Edges.Size; }
+            else if (gi != null) stack.Push(gi.GetInstanceGeometry());
+        }
+    var bb = e.get_BoundingBox(null);
+    list.Add(R("id", IdOf(e), "solids", solids, "volumeM3", CuM(vol), "surfaceM2", SqM(area), "faces", faces, "edges", edges,
+        "bboxMin", bb == null ? null : Out(bb.Min), "bboxMax", bb == null ? null : Out(bb.Max)));
+}
+return list;
+
+@@ revit_element_host_info
+title: Host and dependents
+host: revit
+tx: false
+desc: Host (for doors/windows/hosted families), room, super/sub components and dependent elements.
+arg: ids | ids | Elements (omit = selection)
+code:
+var list = new List<object>();
+foreach (var e in Elems("ids"))
+{
+    var fi = e as FamilyInstance;
+    list.Add(R("id", IdOf(e), "name", e.Name,
+        "host", fi != null && fi.Host != null ? (object)R("id", IdOf(fi.Host), "name", fi.Host.Name) : null,
+        "room", fi != null && fi.Room != null ? fi.Room.Name : null,
+        "superComponent", fi != null && fi.SuperComponent != null ? (object)IdOf(fi.SuperComponent) : null,
+        "subComponents", fi != null ? IdList(fi.GetSubComponentIds()) : new List<object>(),
+        "dependents", IdList(e.GetDependentElements(null).Where(x => x != e.Id).Take(200))));
+}
+return list;
+
+@@ revit_hide_in_view
+title: Hide / unhide elements in view
+host: revit
+desc: Permanently hide (or unhide) elements in a view.
+arg: ids | ids | Elements (omit = selection)
+arg: view | string | View (default active)
+arg: unhide | boolean | Unhide instead
+code:
+var v = ViewArg(); var ids = ElemIds("ids");
+if (B("unhide")) v.UnhideElements(ids); else v.HideElements(ids.Where(i => doc.GetElement(i).CanBeHidden(v)).ToList());
+return R("view", v.Name, "count", ids.Count);
+
+@@ revit_isolate_temporary
+title: Temporary isolate / hide
+host: revit
+desc: Temporary isolate or hide elements or categories in the active view (like the sunglasses menu). mode: isolate, hide, isolateCategory, hideCategory, reset.
+arg: mode | string! | isolate | hide | isolateCategory | hideCategory | reset
+arg: ids | ids | Elements (omit = selection)
+code:
+var v = doc.ActiveView; var m = S("mode").ToLowerInvariant();
+if (m == "reset") { v.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate); return R("reset", true); }
+var els = Elems("ids");
+if (m == "isolate") v.IsolateElementsTemporary(els.Select(e => e.Id).ToList());
+else if (m == "hide") v.HideElementsTemporary(els.Select(e => e.Id).ToList());
+else if (m == "isolatecategory") v.IsolateCategoriesTemporary(els.Where(e => e.Category != null).Select(e => e.Category.Id).Distinct().ToList());
+else if (m == "hidecategory") v.HideCategoriesTemporary(els.Where(e => e.Category != null).Select(e => e.Category.Id).Distinct().ToList());
+else Fail("mode: isolate, hide, isolateCategory, hideCategory, reset");
+return R("mode", m, "count", els.Count);
+
+@@ revit_override_color
+title: Color elements in view
+host: revit
+desc: Override projection/cut color (solid fill) of elements in a view. Color as "#RRGGBB" or [r,g,b].
+arg: ids | ids | Elements (omit = selection)
+arg: color | any | Color (default red)
+arg: view | string | View (default active)
+arg: transparency | integer | Surface transparency 0-100
+arg: halftone | boolean | Halftone
+code:
+var v = ViewArg(); var c = ColorArg("color", new Color(255, 0, 0)); var fill = SolidFill();
+var o = new OverrideGraphicSettings();
+o.SetProjectionLineColor(c); o.SetCutLineColor(c);
+if (fill != ElementId.InvalidElementId) { o.SetSurfaceForegroundPatternId(fill); o.SetSurfaceForegroundPatternColor(c); o.SetCutForegroundPatternId(fill); o.SetCutForegroundPatternColor(c); }
+if (Has("transparency")) o.SetSurfaceTransparency(I("transparency"));
+if (B("halftone")) o.SetHalftone(true);
+int n = 0; foreach (var id in ElemIds("ids")) { v.SetElementOverrides(id, o); n++; }
+return R("view", v.Name, "colored", n);
+
+@@ revit_clear_overrides
+title: Clear element overrides
+host: revit
+desc: Remove graphic overrides from elements in a view.
+arg: ids | ids | Elements (omit = selection; all=true for every element)
+arg: all | boolean | Clear overrides of every element in the view
+arg: view | string | View (default active)
+code:
+var v = ViewArg();
+var ids = B("all") ? ColView(v).WhereElementIsNotElementType().ToElementIds().ToList() : ElemIds("ids");
+foreach (var id in ids) v.SetElementOverrides(id, new OverrideGraphicSettings());
+return R("cleared", ids.Count);
+
+@@ revit_delete_by_category
+title: Delete all of a category
+host: revit
+desc: Delete every element of a category (optionally only in the active view or on a level). Use dryRun first.
+arg: category | string! | Category
+arg: activeViewOnly | boolean | Only elements in the active view
+arg: level | string | Only on this level
+arg: dryRun | boolean | Only count (default true)
+code:
+var col = B("activeViewOnly") ? ColView(doc.ActiveView) : Col();
+var els = col.OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType().ToList();
+if (Has("level")) { var lv = Lvl(S("level")); els = els.Where(e => e.LevelId == lv.Id).ToList(); }
+if (!B("dryRun", true)) doc.Delete(els.Select(e => e.Id).ToList());
+return R("count", els.Count, "deleted", !B("dryRun", true));
+
+@@ revit_find_duplicates
+title: Find duplicate elements
+host: revit
+tx: false
+desc: Instances of the same type at the same location (within tolerance) - typical model QA problem.
+arg: category | string | Category (default all family instances)
+arg: toleranceMm | number | Location tolerance (default 5)
+code:
+double tol = Ft(N("toleranceMm", 5));
+IEnumerable<Element> q = Has("category") ? Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType() : Col().OfClass(typeof(FamilyInstance));
+var keyed = new Dictionary<string, List<long>>();
+foreach (var e in q)
+{
+    XYZ p = null; var lp = e.Location as LocationPoint; var lc = e.Location as LocationCurve;
+    if (lp != null) p = lp.Point; else if (lc != null) p = lc.Curve.Evaluate(0.5, true); else continue;
+    var key = IdOf(e.GetTypeId()) + "|" + Math.Round(p.X / tol) + "|" + Math.Round(p.Y / tol) + "|" + Math.Round(p.Z / tol);
+    if (!keyed.ContainsKey(key)) keyed[key] = new List<long>();
+    keyed[key].Add(IdOf(e));
+}
+var dups = keyed.Values.Where(v => v.Count > 1).Select(v => (object)v.Cast<object>().ToList()).ToList();
+return R("duplicateSets", dups.Count, "sets", dups);
+
+@@ revit_element_workset
+title: Set workset of elements
+host: revit
+desc: Move elements to a workset (workshared models).
+arg: ids | ids | Elements (omit = selection)
+arg: workset | string! | Workset name
+code:
+var ws = new FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset).FirstOrDefault(w => string.Equals(w.Name, S("workset"), StringComparison.OrdinalIgnoreCase));
+if (ws == null) Fail("Workset not found (model must be workshared).");
+int n = 0;
+foreach (var e in Elems("ids")) { var p = e.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM); if (p != null && !p.IsReadOnly) { p.Set(ws.Id.IntegerValue); n++; } }
+return R("moved", n, "workset", ws.Name);
+
+@@ revit_element_phase
+title: Set phase created / demolished
+host: revit
+desc: Set Phase Created and/or Phase Demolished of elements.
+arg: ids | ids | Elements (omit = selection)
+arg: created | string | Phase created name
+arg: demolished | string | Phase demolished name ('none' to clear)
+code:
+var phases = All<Phase>().ToList(); int n = 0;
+foreach (var e in Elems("ids"))
+{
+    if (Has("created")) { var ph = phases.First(p => p.Name == S("created")); e.get_Parameter(BuiltInParameter.PHASE_CREATED).Set(ph.Id); }
+    if (Has("demolished")) { var d = S("demolished"); e.get_Parameter(BuiltInParameter.PHASE_DEMOLISHED).Set(d == "none" ? ElementId.InvalidElementId : phases.First(p => p.Name == d).Id); }
+    n++;
+}
+return R("updated", n);
+
+@@ revit_rooms_of_elements
+title: Room of each element
+host: revit
+tx: false
+desc: Which room each family instance is in (FamilyInstance.Room, else point-in-room test).
+arg: ids | ids | Elements (omit = selection)
+code:
+var rooms = Col().OfCategory(BuiltInCategory.OST_Rooms).Cast<Room>().Where(r => r.Area > 0).ToList();
+var list = new List<object>();
+foreach (var e in Elems("ids"))
+{
+    var fi = e as FamilyInstance; Room room = fi != null ? fi.Room : null;
+    if (room == null)
+    {
+        var lp = e.Location as LocationPoint; var lc = e.Location as LocationCurve;
+        var p = lp != null ? lp.Point : lc != null ? lc.Curve.Evaluate(0.5, true) : null;
+        if (p != null) room = rooms.FirstOrDefault(r => r.IsPointInRoom(p + new XYZ(0, 0, 0.5)));
+    }
+    list.Add(R("id", IdOf(e), "name", e.Name, "room", room == null ? null : room.Number + " " + room.Name));
+}
+return list;

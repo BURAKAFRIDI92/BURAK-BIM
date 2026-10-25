@@ -1,0 +1,606 @@
+# BURAK BIM tool pack - Navisworks coordination: viewpoints, cameras, sections, images, selection/search sets, clash detective, TimeLiner, reports
+
+@@ navis_viewpoint_zoom
+title: Zoom to items
+host: navisworks
+set: navisworks
+tx: false
+desc: Zoom the current view to items (handles, search or selection), optionally saving it as a viewpoint.
+arg: handles | strings | Items (omit = selection)
+arg: search | object | Or a property search
+arg: saveAs | string | Save the result as a viewpoint
+code:
+ModelItemCollection items = Items(); var bb = items.BoundingBox();
+var vp = doc.CurrentViewpoint.CreateCopy(); vp.ZoomBox(bb); doc.CurrentViewpoint.CopyFrom(vp);
+if (Has("saveAs")) { var sv = new SavedViewpoint(doc.CurrentViewpoint.CreateCopy()); sv.DisplayName = S("saveAs"); doc.SavedViewpoints.AddCopy(sv); }
+return R("zoomed", items.Count);
+
+@@ navis_camera
+title: Get / set camera
+host: navisworks
+set: navisworks
+tx: false
+desc: Read the camera (position, look-at, projection, field of view) or set position + target (model units) and projection.
+arg: position | point | Eye position
+arg: target | point | Look-at point
+arg: projection | string | Perspective or Orthographic
+code:
+var vp = doc.CurrentViewpoint.CreateCopy();
+if (Has("position")) { var p = BurakBim.Shared.Json.Vec(Raw("position")); vp.Position = new Point3D(p[0], p[1], p[2]); }
+if (Has("target")) { var t = BurakBim.Shared.Json.Vec(Raw("target")); vp.PointAt(new Point3D(t[0], t[1], t[2])); }
+if (Has("projection")) vp.Projection = S("projection").StartsWith("O", StringComparison.OrdinalIgnoreCase) ? ViewpointProjection.Orthographic : ViewpointProjection.Perspective;
+if (Has("position") || Has("target") || Has("projection")) doc.CurrentViewpoint.CopyFrom(vp);
+var cur = doc.CurrentViewpoint.Value;
+return R("position", new List<object> { cur.Position.X, cur.Position.Y, cur.Position.Z }, "projection", cur.Projection.ToString(), "focalDistance", cur.FocalDistance);
+
+@@ navis_viewpoints_tree
+title: Saved viewpoints (with folders & comments)
+host: navisworks
+set: navisworks
+tx: false
+desc: Every saved viewpoint and folder with comment counts and redline presence.
+code:
+var r = new List<object>(); var stack = new Stack<KeyValuePair<GroupItem, string>>(); stack.Push(new KeyValuePair<GroupItem, string>(doc.SavedViewpoints.RootItem, ""));
+while (stack.Count > 0)
+{
+    var cur = stack.Pop();
+    foreach (SavedItem it in cur.Key.Children)
+    {
+        var path = cur.Value.Length == 0 ? it.DisplayName : cur.Value + " / " + it.DisplayName;
+        if (it.IsGroup) { r.Add(R("folder", path)); stack.Push(new KeyValuePair<GroupItem, string>((GroupItem)it, path)); }
+        else r.Add(R("viewpoint", path, "comments", it.Comments.Count, "guid", it.Guid.ToString()));
+    }
+}
+return r;
+
+@@ navis_viewpoint_folder
+title: Viewpoint folder & organise
+host: navisworks
+set: navisworks
+tx: false
+desc: Create a viewpoint folder and optionally move/copy named viewpoints into it.
+arg: folder | string! | Folder name
+arg: viewpoints | strings | Viewpoint names to copy into the folder
+code:
+var folder = new FolderItem { DisplayName = S("folder") }; doc.SavedViewpoints.AddCopy(folder);
+GroupItem target = null; foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children) if (it.IsGroup && it.DisplayName == S("folder")) target = (GroupItem)it;
+int n = 0;
+foreach (var name in SL("viewpoints"))
+  foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children) if (!it.IsGroup && it.DisplayName == name) { doc.SavedViewpoints.InsertCopy(target, target.Children.Count, it); n++; }
+return R("folder", S("folder"), "copied", n);
+
+@@ navis_viewpoint_delete
+title: Delete viewpoints
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Delete saved viewpoints by name (or all whose name starts with a prefix).
+arg: names | strings | Names
+arg: prefix | string | Name prefix
+code:
+var del = new List<SavedItem>();
+foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children) if (!it.IsGroup && (SL("names").Contains(it.DisplayName) || (Has("prefix") && it.DisplayName.StartsWith(S("prefix"))))) del.Add(it);
+foreach (var it in del) doc.SavedViewpoints.Remove(doc.SavedViewpoints.RootItem, it);
+return R("deleted", del.Count);
+
+@@ navis_viewpoint_rename
+title: Rename viewpoint
+host: navisworks
+set: navisworks
+tx: false
+desc: Rename a saved viewpoint.
+arg: name | string! | Current name
+arg: newName | string! | New name
+code:
+foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children) if (it.DisplayName == S("name")) { doc.SavedViewpoints.EditDisplayName(it, S("newName")); return R("renamed", S("newName")); }
+Fail("Viewpoint not found"); return null;
+
+@@ navis_image_export
+title: Export view image
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Render the current view (or a saved viewpoint) to a PNG file at a resolution.
+arg: viewpoint | string | Saved viewpoint to apply first
+arg: width | integer | Width px (default 1920)
+arg: height | integer | Height px (default 1080)
+arg: path | string | Output .png (default exports folder)
+code:
+if (Has("viewpoint")) foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children) if (it.DisplayName == S("viewpoint")) doc.SavedViewpoints.CurrentSavedViewpoint = (SavedViewpoint)it;
+var bmp = doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, I("width", 1920), I("height", 1080));
+var path = S("path") ?? System.IO.Path.Combine(BurakBim.Shared.BurakPaths.Sub("exports", "navisworks"), "view-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png");
+bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+return R("image", path);
+
+@@ navis_viewpoint_images
+title: Export images of all viewpoints
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Export a PNG for every saved viewpoint (top level) - fast coordination report material.
+arg: width | integer | Width (default 1600)
+arg: height | integer | Height (default 900)
+arg: folder | string | Output folder
+code:
+var folder = S("folder") ?? BurakBim.Shared.BurakPaths.Sub("exports", "navisworks", "viewpoints"); System.IO.Directory.CreateDirectory(folder); var files = new List<object>();
+foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children)
+{
+    var sv = it as SavedViewpoint; if (sv == null) continue; doc.SavedViewpoints.CurrentSavedViewpoint = sv;
+    var bmp = doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, I("width", 1600), I("height", 900));
+    var f = System.IO.Path.Combine(folder, string.Concat(sv.DisplayName.Split(System.IO.Path.GetInvalidFileNameChars())) + ".png"); bmp.Save(f, System.Drawing.Imaging.ImageFormat.Png); files.Add(f);
+}
+return R("folder", folder, "images", files);
+
+@@ navis_section_box
+title: Sectioning (box / clip planes)
+host: navisworks
+set: navisworks
+tx: false
+desc: Enable sectioning as a box around items (or a box in model units), or turn sectioning off. Uses the view clipping-planes JSON API (Navisworks 2017+).
+arg: handles | strings | Items to box (omit = selection)
+arg: min | point | Box min (instead of items)
+arg: max | point | Box max
+arg: off | boolean | Turn sectioning off
+arg: marginPercent | number | Margin (default 10)
+code:
+if (B("off")) { doc.ActiveView.SetClippingPlanes("{\"Type\":\"ClipPlaneSet\",\"Version\":1,\"OrientedBox\":{\"Type\":\"OrientedBox3D\",\"Version\":1,\"Box\":[[0,0,0],[0,0,0]],\"Rotation\":[0,0,0]},\"Enabled\":false}"); return R("sectioning", false); }
+BoundingBox3D bb;
+if (Has("min")) { var a = BurakBim.Shared.Json.Vec(Raw("min")); var b = BurakBim.Shared.Json.Vec(Raw("max")); bb = new BoundingBox3D(new Point3D(a[0], a[1], a[2]), new Point3D(b[0], b[1], b[2])); }
+else bb = ((ModelItemCollection)Items()).BoundingBox();
+var m = N("marginPercent", 10) / 100.0; var dx = bb.Size.X * m; var dy = bb.Size.Y * m; var dz = bb.Size.Z * m;
+var inv = System.Globalization.CultureInfo.InvariantCulture;
+var json = string.Format(inv, "{{\"Type\":\"ClipPlaneSet\",\"Version\":1,\"OrientedBox\":{{\"Type\":\"OrientedBox3D\",\"Version\":1,\"Box\":[[{0},{1},{2}],[{3},{4},{5}]],\"Rotation\":[0,0,0]}},\"Enabled\":true}}", bb.Min.X - dx, bb.Min.Y - dy, bb.Min.Z - dz, bb.Max.X + dx, bb.Max.Y + dy, bb.Max.Z + dz);
+doc.ActiveView.SetClippingPlanes(json);
+return R("sectioning", true, "json", json);
+
+@@ navis_clip_planes_get
+title: Read clip planes
+host: navisworks
+set: navisworks
+tx: false
+desc: Current sectioning/clip plane definition (JSON) of the active view.
+code:
+return R("json", doc.ActiveView.GetClippingPlanes());
+
+@@ navis_selection_sets
+title: Selection & search sets
+host: navisworks
+set: navisworks
+tx: false
+desc: All selection sets and search sets (folders included) with item counts.
+code:
+var r = new List<object>(); var stack = new Stack<KeyValuePair<GroupItem, string>>(); stack.Push(new KeyValuePair<GroupItem, string>(doc.SelectionSets.RootItem, ""));
+while (stack.Count > 0)
+{
+    var cur = stack.Pop();
+    foreach (SavedItem it in cur.Key.Children)
+    {
+        var path = cur.Value.Length == 0 ? it.DisplayName : cur.Value + " / " + it.DisplayName;
+        if (it.IsGroup) stack.Push(new KeyValuePair<GroupItem, string>((GroupItem)it, path));
+        else { var ss = it as SelectionSet; int count = 0; try { count = ss.GetSelectedItems().Count; } catch { } r.Add(R("name", path, "kind", ss != null && ss.HasSearch ? "search set" : "selection set", "items", count)); }
+    }
+}
+return r;
+
+@@ navis_selection_set_create
+title: Create selection / search set
+host: navisworks
+set: navisworks
+tx: false
+desc: Save the current selection (or handles) as a selection set, or a property search as a dynamic search set.
+arg: name | string! | Set name
+arg: search | object | Make a search set from {category, property, value, op}
+arg: handles | strings | Items for a selection set (omit = current selection)
+code:
+SelectionSet set;
+if (Has("search"))
+{
+    var o = O("search"); var s = new Search(); s.Selection.SelectAll(); s.Locations = SearchLocations.DescendantsAndSelf;
+    var c = SearchCondition.HasPropertyByDisplayName(BurakBim.Shared.Json.Str(o, "category"), BurakBim.Shared.Json.Str(o, "property"));
+    var v = BurakBim.Shared.Json.Str(o, "value");
+    if (v != null) c = (BurakBim.Shared.Json.Str(o, "op", "equals") == "contains" ? c.DisplayStringContains(v) : c.EqualValue(VariantData.FromDisplayString(v))).IgnoreStringValueCase();
+    s.SearchConditions.Add(c); set = new SelectionSet(s);
+}
+else set = new SelectionSet((ModelItemCollection)Items());
+set.DisplayName = S("name"); doc.SelectionSets.AddCopy(set);
+return R("created", S("name"), "kind", Has("search") ? "search set" : "selection set");
+
+@@ navis_selection_set_apply
+title: Select a set
+host: navisworks
+set: navisworks
+tx: false
+desc: Select the items of a saved selection/search set (by name), optionally hide everything else.
+arg: name | string! | Set name
+arg: isolate | boolean | Hide unselected
+code:
+SelectionSet found = null; var stack = new Stack<GroupItem>(); stack.Push(doc.SelectionSets.RootItem);
+while (stack.Count > 0 && found == null) foreach (SavedItem it in stack.Pop().Children) { if (it.IsGroup) stack.Push((GroupItem)it); else if (it.DisplayName == S("name")) found = it as SelectionSet; }
+if (found == null) Fail("Set not found");
+var items = found.GetSelectedItems(); doc.CurrentSelection.CopyFrom(items);
+if (B("isolate"))
+{
+    var keep = new ModelItemCollection(); foreach (ModelItem i in items) { keep.AddRange(i.AncestorsAndSelf); keep.AddRange(i.Descendants); }
+    var hide = new ModelItemCollection(); foreach (ModelItem i in keep) if (i.Parent != null) foreach (ModelItem sib in i.Parent.Children) if (!keep.Contains(sib)) hide.Add(sib);
+    doc.Models.ResetAllHidden(); doc.Models.SetHidden(hide, true);
+}
+return R("selected", items.Count);
+
+@@ navis_sets_by_property
+title: Search sets for every value
+host: navisworks
+set: navisworks
+tx: false
+desc: Create one search set per distinct value of a property (e.g. a set per Revit Category or per Level) inside a folder - the classic clash-matrix setup in one call.
+arg: category | string! | Property tab, e.g. Element
+arg: property | string! | Property, e.g. Category
+arg: folder | string | Folder name (default "BURAK BIM - <property>")
+code:
+var values = new HashSet<string>();
+foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf) { var p = it.PropertyCategories.FindPropertyByDisplayName(S("category"), S("property")); if (p != null) values.Add(p.Value.ToDisplayString()); }
+var fname = S("folder", "BURAK BIM - " + S("property")); doc.SelectionSets.AddCopy(new FolderItem { DisplayName = fname });
+GroupItem folder = null; foreach (SavedItem it in doc.SelectionSets.RootItem.Children) if (it.IsGroup && it.DisplayName == fname) folder = (GroupItem)it;
+foreach (var v in values.OrderBy(x => x))
+{
+    var s = new Search(); s.Selection.SelectAll(); s.Locations = SearchLocations.DescendantsAndSelf;
+    s.SearchConditions.Add(SearchCondition.HasPropertyByDisplayName(S("category"), S("property")).EqualValue(VariantData.FromDisplayString(v)));
+    var set = new SelectionSet(s) { DisplayName = v }; doc.SelectionSets.InsertCopy(folder, folder.Children.Count, set);
+}
+return R("folder", fname, "sets", values.Count);
+
+@@ navis_clash_matrix
+title: Clash matrix (create tests)
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Create a hard-clash test for every pair of property values (e.g. Element/Category: Structural Framing x Ducts, Pipes, Cable Trays) and optionally run them.
+arg: category | string! | Property tab (e.g. Element)
+arg: property | string! | Property (e.g. Category)
+arg: groupA | strings! | Values for side A
+arg: groupB | strings! | Values for side B
+arg: tolerance | number | Tolerance in model units (default 0)
+arg: type | string | Hard (default), HardConservative, Clearance
+arg: run | boolean | Run the tests (default true)
+code:
+var data = ClashDoc().TestsData; var made = new List<object>();
+foreach (var a in SL("groupA")) foreach (var b in SL("groupB"))
+{
+    if (a == b) continue;
+    dynamic test = Activator.CreateInstance(AppDomain.CurrentDomain.GetAssemblies().First(x => x.GetName().Name == "Autodesk.Navisworks.Clash").GetType("Autodesk.Navisworks.Api.Clash.ClashTest"));
+    test.DisplayName = a + " vs " + b;
+    test.TestType = (dynamic)Enum.Parse(test.TestType.GetType(), S("type", "Hard"), true);
+    test.Tolerance = N("tolerance", 0);
+    test.SelectionA.Selection.CopyFrom(Find(S("category"), S("property"), a));
+    test.SelectionB.Selection.CopyFrom(Find(S("category"), S("property"), b));
+    data.TestsAddCopy(test); made.Add(a + " vs " + b);
+}
+if (B("run", true)) data.TestsRunAllTests();
+return R("tests", made);
+
+@@ navis_clash_summary
+title: Clash summary dashboard
+host: navisworks
+set: navisworks
+tx: false
+desc: Every clash test with totals by status (New/Active/Reviewed/Approved/Resolved) plus grand totals - coordination meeting summary.
+code:
+var totals = new Dictionary<string, int>(); var tests = new List<object>();
+foreach (dynamic t in ClashDoc().TestsData.Tests)
+{
+    var counts = new Dictionary<string, object>(); int n = 0;
+    foreach (dynamic c in t.Children)
+    {
+        var list = new List<dynamic>(); if ((bool)c.IsGroup) foreach (dynamic r in c.Children) list.Add(r); else list.Add(c);
+        foreach (var r in list) { string s = r.Status.ToString(); counts[s] = (counts.ContainsKey(s) ? (int)counts[s] : 0) + 1; totals[s] = (totals.ContainsKey(s) ? totals[s] : 0) + 1; n++; }
+    }
+    tests.Add(R("test", (string)t.DisplayName, "type", t.TestType.ToString(), "total", n, "byStatus", counts));
+}
+return R("totals", totals.ToDictionary(k => k.Key, k => (object)k.Value), "tests", tests);
+
+@@ navis_clash_group_by_level
+title: Group clashes by level / grid
+host: navisworks
+set: navisworks
+tx: false
+desc: Report clash results of a test bucketed by a property of item 1 (e.g. Element/Level) - where are the problems.
+arg: test | string! | Clash test
+arg: category | string | Property tab (default Element)
+arg: property | string | Property (default Level)
+code:
+var res = new Dictionary<string, int>();
+foreach (dynamic c in Test(S("test")).Children)
+{
+    var list = new List<dynamic>(); if ((bool)c.IsGroup) foreach (dynamic r in c.Children) list.Add(r); else list.Add(c);
+    foreach (var r in list)
+    {
+        string key = "(unknown)";
+        try { ModelItem i1 = r.Item1; var p = i1 == null ? null : (i1.PropertyCategories.FindPropertyByDisplayName(S("category", "Element"), S("property", "Level")) ?? (i1.Parent == null ? null : i1.Parent.PropertyCategories.FindPropertyByDisplayName(S("category", "Element"), S("property", "Level")))); if (p != null) key = p.Value.ToDisplayString(); } catch { }
+        res[key] = res.ContainsKey(key) ? res[key] + 1 : 1;
+    }
+}
+return res.OrderByDescending(k => k.Value).ToDictionary(k => k.Key, k => (object)k.Value);
+
+@@ navis_clash_viewpoint
+title: Zoom to a clash
+host: navisworks
+set: navisworks
+tx: false
+desc: Select both items of a clash result, color them red/green, zoom to it and optionally save a viewpoint named after the clash.
+arg: result | string! | Clash result handle (from navisworks_clash_results)
+arg: save | boolean | Save a viewpoint
+code:
+dynamic r = FromHandle(S("result")); var items = new ModelItemCollection();
+ModelItem a = r.Item1; ModelItem b = r.Item2; if (a != null) items.Add(a); if (b != null) items.Add(b);
+doc.CurrentSelection.CopyFrom(items);
+if (a != null) doc.Models.OverrideTemporaryColor(new ModelItemCollection { a }, new Color(1, 0, 0));
+if (b != null) doc.Models.OverrideTemporaryColor(new ModelItemCollection { b }, new Color(0, 0.8, 0));
+var vp = doc.CurrentViewpoint.CreateCopy(); vp.ZoomBox(items.BoundingBox()); doc.CurrentViewpoint.CopyFrom(vp);
+if (B("save")) { var sv = new SavedViewpoint(doc.CurrentViewpoint.CreateCopy()); sv.DisplayName = "Clash - " + (string)r.DisplayName; doc.SavedViewpoints.AddCopy(sv); }
+return R("clash", (string)r.DisplayName, "distance", (double)r.Distance);
+
+@@ navis_clash_auto_group
+title: Group clashes by item
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Group the results of a test by their first item's parent (e.g. one group per beam/duct) to reduce hundreds of clashes to actionable issues.
+arg: test | string! | Clash test
+code:
+var data = ClashDoc().TestsData; dynamic test = Test(S("test"));
+var clashAsm = AppDomain.CurrentDomain.GetAssemblies().First(x => x.GetName().Name == "Autodesk.Navisworks.Clash");
+var groups = new Dictionary<string, List<dynamic>>();
+foreach (dynamic c in test.Children) { if ((bool)c.IsGroup) continue; ModelItem i1 = c.Item1; var key = i1 == null ? "(none)" : (i1.Parent != null ? i1.Parent.DisplayName : i1.DisplayName); if (!groups.ContainsKey(key)) groups[key] = new List<dynamic>(); groups[key].Add(c); }
+dynamic copy = test.CreateCopy(); copy.Children.Clear();
+foreach (var kv in groups)
+{
+    if (kv.Value.Count == 1) { copy.Children.Add(kv.Value[0].CreateCopy()); continue; }
+    dynamic g = Activator.CreateInstance(clashAsm.GetType("Autodesk.Navisworks.Api.Clash.ClashResultGroup")); g.DisplayName = kv.Key;
+    foreach (var c in kv.Value) g.Children.Add(c.CreateCopy());
+    copy.Children.Add(g);
+}
+data.TestsEditTestFromCopy(test, copy);
+return R("groups", groups.Count(k => k.Value.Count > 1), "ungrouped", groups.Count(k => k.Value.Count == 1));
+
+@@ navis_clash_bulk_status
+title: Bulk clash status
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Set the status (and assignee) of all results of a test that match a current status - e.g. mark all New as Active, all Approved as Resolved.
+arg: test | string! | Clash test
+arg: fromStatus | string | Only results with this status
+arg: toStatus | string! | New status: New, Active, Reviewed, Approved, Resolved
+arg: assignedTo | string | Assign to
+code:
+var data = ClashDoc().TestsData; int n = 0; dynamic test = Test(S("test"));
+var statusType = AppDomain.CurrentDomain.GetAssemblies().First(x => x.GetName().Name == "Autodesk.Navisworks.Clash").GetType("Autodesk.Navisworks.Api.Clash.ClashResultStatus");
+var to = Enum.Parse(statusType, S("toStatus"), true);
+var all = new List<dynamic>(); foreach (dynamic c in test.Children) { if ((bool)c.IsGroup) foreach (dynamic r in c.Children) all.Add(r); else all.Add(c); }
+foreach (var r in all)
+{
+    if (Has("fromStatus") && !string.Equals((string)r.Status.ToString(), S("fromStatus"), StringComparison.OrdinalIgnoreCase)) continue;
+    data.TestsEditResultStatus(r, (dynamic)to); if (Has("assignedTo")) data.TestsEditResultAssignedTo(r, S("assignedTo")); n++;
+}
+return R("updated", n);
+
+@@ navis_clash_report_csv
+title: Clash report (CSV)
+host: navisworks
+set: navisworks
+tx: false
+desc: Write a CSV clash report (test, clash, status, distance mm, location, item paths, assignee) for one or all tests.
+arg: test | string | Test name (default all)
+arg: path | string | Output .csv
+code:
+var sb = new System.Text.StringBuilder("Test,Clash,Status,Distance mm,X,Y,Z,Item 1,Item 2,Assigned To,Created\n");
+foreach (dynamic t in ClashDoc().TestsData.Tests)
+{
+    if (Has("test") && (string)t.DisplayName != S("test")) continue;
+    var all = new List<dynamic>(); foreach (dynamic c in t.Children) { if ((bool)c.IsGroup) foreach (dynamic r in c.Children) all.Add(r); else all.Add(c); }
+    foreach (var r in all)
+    {
+        string i1 = "", i2 = ""; try { i1 = PathOf(r.Item1); i2 = PathOf(r.Item2); } catch { }
+        Point3D p = r.Center;
+        sb.AppendLine(string.Join(",", new[] { (string)t.DisplayName, (string)r.DisplayName, r.Status.ToString(), Math.Round((double)r.Distance * ToMm, 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            p.X.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), p.Y.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), p.Z.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), i1, i2, (string)r.AssignedTo ?? "", Convert.ToString(r.CreatedTime) }.Select(x => "\"" + (x ?? "").Replace("\"", "'") + "\"")));
+    }
+}
+var path = S("path") ?? System.IO.Path.Combine(BurakBim.Shared.BurakPaths.Sub("exports", "navisworks"), "Clash-Report-" + DateTime.Now.ToString("yyyyMMdd-HHmm") + ".csv");
+System.IO.File.WriteAllText(path, sb.ToString()); return R("report", path);
+
+@@ navis_clash_report_html
+title: Clash report (HTML with images)
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: HTML clash report with a rendered image per clash (first N results of a test) - send to designers.
+arg: test | string! | Test
+arg: status | string | Only this status (default New)
+arg: limit | integer | Max clashes (default 30)
+code:
+var folder = BurakBim.Shared.BurakPaths.Sub("reports", "clash-" + DateTime.Now.ToString("yyyyMMdd-HHmm")); var sb = new System.Text.StringBuilder();
+sb.Append("<html><head><meta charset='utf-8'><title>Clash report</title><style>body{font-family:Segoe UI,Arial}td{vertical-align:top;padding:6px;border-bottom:1px solid #ddd}</style></head><body><h1>BURAK BIM clash report - " + S("test") + "</h1><table>");
+var all = new List<dynamic>(); foreach (dynamic c in Test(S("test")).Children) { if ((bool)c.IsGroup) foreach (dynamic r in c.Children) all.Add(r); else all.Add(c); }
+int n = 0;
+foreach (var r in all)
+{
+    if (r.Status.ToString() != S("status", "New")) continue; if (n++ >= I("limit", 30)) break;
+    var items = new ModelItemCollection(); ModelItem a = r.Item1; ModelItem b = r.Item2; if (a != null) items.Add(a); if (b != null) items.Add(b);
+    doc.CurrentSelection.CopyFrom(items); var vp = doc.CurrentViewpoint.CreateCopy(); vp.ZoomBox(items.BoundingBox()); doc.CurrentViewpoint.CopyFrom(vp);
+    var img = "clash" + n + ".png"; doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, 800, 500).Save(System.IO.Path.Combine(folder, img), System.Drawing.Imaging.ImageFormat.Png);
+    sb.Append("<tr><td><img src='" + img + "' width='400'></td><td><b>" + (string)r.DisplayName + "</b><br>Distance: " + Math.Round((double)r.Distance * ToMm, 1) + " mm<br>" + System.Net.WebUtility.HtmlEncode(a == null ? "" : PathOf(a)) + "<br>vs<br>" + System.Net.WebUtility.HtmlEncode(b == null ? "" : PathOf(b)) + "</td></tr>");
+}
+sb.Append("</table></body></html>"); var file = System.IO.Path.Combine(folder, "index.html"); System.IO.File.WriteAllText(file, sb.ToString());
+return R("report", file, "clashes", n);
+
+@@ navis_clash_delete_tests
+title: Delete clash tests
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Delete clash tests by name, or all tests (clear).
+arg: tests | strings | Test names
+arg: all | boolean | Delete every test
+code:
+var data = ClashDoc().TestsData;
+if (B("all")) { data.TestsClear(); return R("cleared", true); }
+var del = new List<dynamic>(); foreach (dynamic t in data.Tests) if (SL("tests").Contains((string)t.DisplayName)) del.Add(t);
+foreach (var t in del) data.TestsRemove(t);
+return R("deleted", del.Count);
+
+@@ navis_clash_edit_test
+title: Edit clash test settings
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Change tolerance, type or name of an existing clash test.
+arg: test | string! | Test
+arg: tolerance | number | Tolerance (model units)
+arg: type | string | Hard, HardConservative, Clearance, Duplicate
+arg: newName | string | Rename
+code:
+var data = ClashDoc().TestsData; dynamic t = Test(S("test")); dynamic copy = t.CreateCopy();
+if (Has("tolerance")) copy.Tolerance = N("tolerance");
+if (Has("type")) copy.TestType = (dynamic)Enum.Parse(copy.TestType.GetType(), S("type"), true);
+if (Has("newName")) copy.DisplayName = S("newName");
+data.TestsEditTestFromCopy(t, copy);
+return R("updated", (string)copy.DisplayName);
+
+@@ navis_clash_compact
+title: Compact clash tests
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Remove resolved results from all tests (Compact) to keep the file light.
+code:
+ClashDoc().TestsData.TestsCompactAllTests(); return R("compacted", true);
+
+@@ navis_timeliner_create_tasks
+title: TimeLiner: tasks from sets
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Create TimeLiner tasks (Construct) from selection/search sets or from distinct values of a property (e.g. Element/Level), with planned dates spaced by N days.
+arg: category | string | Property tab (when creating from property values)
+arg: property | string | Property (e.g. Level)
+arg: sets | strings | Selection/search set names (alternative)
+arg: start | string! | First planned start date (yyyy-MM-dd)
+arg: durationDays | integer | Duration of each task (default 7)
+arg: taskType | string | Construct (default), Demolish, Temporary
+code:
+var tl = TimelinerDoc(); var asm = AppDomain.CurrentDomain.GetAssemblies().First(x => x.GetName().Name == "Autodesk.Navisworks.Timeliner");
+var start = DateTime.Parse(S("start"), System.Globalization.CultureInfo.InvariantCulture); int dur = I("durationDays", 7); var made = new List<object>();
+var sources = new List<KeyValuePair<string, ModelItemCollection>>();
+if (SL("sets").Count > 0)
+{
+    var stack = new Stack<GroupItem>(); stack.Push(doc.SelectionSets.RootItem);
+    while (stack.Count > 0) foreach (SavedItem it in stack.Pop().Children) { if (it.IsGroup) stack.Push((GroupItem)it); else if (SL("sets").Contains(it.DisplayName)) sources.Add(new KeyValuePair<string, ModelItemCollection>(it.DisplayName, ((SelectionSet)it).GetSelectedItems())); }
+}
+else
+{
+    var values = new SortedSet<string>(); foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.DescendantsAndSelf) { var p = it.PropertyCategories.FindPropertyByDisplayName(S("category"), S("property")); if (p != null) values.Add(p.Value.ToDisplayString()); }
+    foreach (var v in values) sources.Add(new KeyValuePair<string, ModelItemCollection>(v, Find(S("category"), S("property"), v)));
+}
+foreach (var src in sources)
+{
+    dynamic task = Activator.CreateInstance(asm.GetType("Autodesk.Navisworks.Api.Timeliner.TimelinerTask"));
+    task.DisplayName = src.Key; task.PlannedStartDate = start; task.PlannedEndDate = start.AddDays(dur); task.SimulationTaskTypeName = S("taskType", "Construct");
+    task.Selection.CopyFrom(src.Value);
+    tl.TaskAddCopy(task); made.Add(src.Key); start = start.AddDays(dur);
+}
+return R("tasks", made);
+
+@@ navis_timeliner_clear
+title: TimeLiner: clear tasks
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Delete all TimeLiner tasks.
+code:
+var tl = TimelinerDoc(); tl.TasksClear(); return R("cleared", true);
+
+@@ navis_timeliner_task_dates
+title: TimeLiner: edit task dates
+host: navisworks
+set: navisworks
+tx: false
+readonly: false
+desc: Set planned/actual dates of a TimeLiner task by name.
+arg: task | string! | Task name
+arg: plannedStart | string | yyyy-MM-dd
+arg: plannedEnd | string | yyyy-MM-dd
+arg: actualStart | string | yyyy-MM-dd
+arg: actualEnd | string | yyyy-MM-dd
+code:
+var tl = TimelinerDoc(); dynamic found = null;
+foreach (dynamic t in tl.TasksRoot.Children) if ((string)t.DisplayName == S("task")) found = t;
+if (found == null) Fail("Task not found");
+dynamic copy = found.CreateCopy(); var ci = System.Globalization.CultureInfo.InvariantCulture;
+if (Has("plannedStart")) copy.PlannedStartDate = DateTime.Parse(S("plannedStart"), ci);
+if (Has("plannedEnd")) copy.PlannedEndDate = DateTime.Parse(S("plannedEnd"), ci);
+if (Has("actualStart")) copy.ActualStartDate = DateTime.Parse(S("actualStart"), ci);
+if (Has("actualEnd")) copy.ActualEndDate = DateTime.Parse(S("actualEnd"), ci);
+tl.TaskEdit(found, copy);
+return R("updated", S("task"));
+
+@@ navis_timeliner_delays
+title: TimeLiner: delayed tasks
+host: navisworks
+set: navisworks
+tx: false
+desc: Tasks whose actual end is after the planned end (or not finished past planned end), with delay in days - 4D progress check.
+code:
+var res = new List<object>(); var stack = new Stack<dynamic>(); stack.Push(TimelinerDoc().TasksRoot);
+while (stack.Count > 0)
+  foreach (dynamic t in stack.Pop().Children)
+  {
+      stack.Push(t);
+      DateTime? pe = t.PlannedEndDate; DateTime? ae = t.ActualEndDate;
+      if (pe == null) continue;
+      var end = ae ?? DateTime.Today; var d = (end - pe.Value).TotalDays;
+      if (d > 0) res.Add(R("task", (string)t.DisplayName, "plannedEnd", pe.Value.ToString("yyyy-MM-dd"), "actualEnd", ae == null ? null : ae.Value.ToString("yyyy-MM-dd"), "delayDays", Math.Round(d)));
+  }
+return R("delayed", res.Count, "tasks", res);
+
+@@ navis_comments
+title: Comments on viewpoints & clashes
+host: navisworks
+set: navisworks
+tx: false
+desc: All comments attached to saved viewpoints (body, author, status, date).
+code:
+var r = new List<object>();
+foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children)
+  foreach (Comment c in it.Comments) r.Add(R("on", it.DisplayName, "body", c.Body, "author", c.Author, "status", c.Status.ToString(), "date", c.CreationDate.ToString("s")));
+return r;
+
+@@ navis_comment_add
+title: Add comment to a viewpoint
+host: navisworks
+set: navisworks
+tx: false
+desc: Add a comment (body, status) to a saved viewpoint.
+arg: viewpoint | string! | Viewpoint name
+arg: body | string! | Comment text
+arg: status | string | New, Active, Approved, Resolved (default New)
+code:
+foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children)
+  if (it.DisplayName == S("viewpoint"))
+  {
+      CommentStatus st; if (!Enum.TryParse(S("status", "New"), true, out st)) st = CommentStatus.New;
+      var cc = new CommentCollection(); foreach (Comment c in it.Comments) cc.Add(c); cc.Add(new Comment(S("body"), st, Environment.UserName));
+      doc.SavedViewpoints.EditComments(it, cc); return R("added", true);
+  }
+Fail("Viewpoint not found"); return null;

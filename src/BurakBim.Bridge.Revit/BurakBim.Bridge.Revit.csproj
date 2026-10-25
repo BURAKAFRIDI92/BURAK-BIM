@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- BURAK BIM Revit bridge. Built by the installer for every detected Revit year against that year's own API files.
+       Manual build: dotnet build -c Release -p:RevitYear=2024 -p:RevitDir="C:\Program Files\Autodesk\Revit 2024" -->
+  <PropertyGroup>
+    <RevitYear Condition="'$(RevitYear)' == ''">2024</RevitYear>
+    <RevitDir Condition="'$(RevitDir)' == ''">C:\Program Files\Autodesk\Revit $(RevitYear)</RevitDir>
+    <UseRoslyn Condition="'$(UseRoslyn)' == ''">true</UseRoslyn>
+    <TargetFramework Condition="$(RevitYear) &lt; 2025">net48</TargetFramework>
+    <TargetFramework Condition="$(RevitYear) &gt;= 2025">net8.0-windows</TargetFramework>
+    <AssemblyName>BurakBim.Bridge.Revit</AssemblyName>
+    <RootNamespace>BurakBim.Bridge.Revit</RootNamespace>
+    <Version>1.2.0</Version>
+    <Company>BURAK BIM</Company>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateTargetPlatformAttribute>false</GenerateTargetPlatformAttribute>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <NoWarn>CS0618;CS0219;MSB3277;NU1701</NoWarn>
+    <DefineConstants>$(DefineConstants);REVIT$(RevitYear)</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(RevitYear) &gt;= 2024">
+    <DefineConstants>$(DefineConstants);REVIT_LONG_IDS</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(UseRoslyn)' == 'true'">
+    <DefineConstants>$(DefineConstants);BURAK_ROSLYN</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="RevitAPI"><HintPath>$(RevitDir)\RevitAPI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="RevitAPIUI"><HintPath>$(RevitDir)\RevitAPIUI.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="System.Xaml" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" Condition="'$(FrameworkPathOverride)' == ''" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseRoslyn)' == 'true'">
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\burakbim-16.png" LogicalName="brand.burakbim-16.png" />
+    <EmbeddedResource Include="..\..\assets\burakbim-32.png" LogicalName="brand.burakbim-32.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+    <Compile Include="..\BurakBim.Bridge.Core\*.cs" Link="Core\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

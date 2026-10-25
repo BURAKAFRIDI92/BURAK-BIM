@@ -1,0 +1,468 @@
+# BURAK BIM tool pack - Revit Manage / Collaborate / Insert: project info, location, units, phases, worksets, links, CAD, materials, styles
+
+@@ revit_project_info
+title: Project information
+host: revit
+tx: false
+desc: Project information (name, number, client, address, status, issue date, author) and file info.
+code:
+var pi = doc.ProjectInformation;
+return R("name", pi.Name, "number", pi.Number, "client", pi.ClientName, "address", pi.Address, "status", pi.Status, "issueDate", pi.IssueDate,
+  "author", pi.Author, "building", pi.BuildingName, "organization", pi.OrganizationName, "file", doc.PathName, "workshared", doc.IsWorkshared, "title", doc.Title);
+
+@@ revit_project_info_set
+title: Set project information
+host: revit
+desc: Set project information fields (name, number, client, address, status, issueDate, author, building, organization) or any Project Information parameter by name.
+arg: values | object! | {"name":"...", "client":"...", "Project Issue Date":"..."}
+code:
+var pi = doc.ProjectInformation; var map = new Dictionary<string, string> { { "name", "Project Name" }, { "number", "Project Number" }, { "client", "Client Name" }, { "address", "Project Address" }, { "status", "Project Status" }, { "issueDate", "Project Issue Date" }, { "author", "Author" }, { "building", "Building Name" }, { "organization", "Organization Name" } };
+int n = 0;
+foreach (var kv in O("values")) { var pn = map.ContainsKey(kv.Key) ? map[kv.Key] : kv.Key; SetPrm(pi, pn, kv.Value); n++; }
+return R("updated", n);
+
+@@ revit_location
+title: Site location & coordinates
+host: revit
+tx: false
+desc: Geographic location (lat/long, place name, time zone), project base point, survey point and true-north angle.
+code:
+var sl = doc.SiteLocation; var pl = doc.ActiveProjectLocation; var pos = pl.GetProjectPosition(XYZ.Zero);
+var bps = Col().OfClass(typeof(BasePoint)).Cast<BasePoint>().Select(b => (object)R("survey", b.IsShared, "position", Out(b.Position), "shared", Out(b.SharedPosition))).ToList();
+return R("place", sl.PlaceName, "latitude", Deg(sl.Latitude), "longitude", Deg(sl.Longitude), "elevationMm", Mm(sl.Elevation), "timeZone", sl.TimeZone,
+  "projectLocation", pl.Name, "eastWestMm", Mm(pos.EastWest), "northSouthMm", Mm(pos.NorthSouth), "elevationOffsetMm", Mm(pos.Elevation), "trueNorthDeg", Deg(pos.Angle), "basePoints", bps);
+
+@@ revit_location_set
+title: Set site location
+host: revit
+desc: Set latitude/longitude (degrees), place name and time zone (hours).
+arg: latitude | number! | Latitude degrees
+arg: longitude | number! | Longitude degrees
+arg: placeName | string | Place name
+arg: timeZone | number | UTC offset hours
+code:
+var sl = doc.SiteLocation; sl.Latitude = Rad(N("latitude")); sl.Longitude = Rad(N("longitude"));
+if (Has("placeName")) sl.PlaceName = S("placeName"); if (Has("timeZone")) sl.TimeZone = N("timeZone");
+return R("latitude", N("latitude"), "longitude", N("longitude"));
+
+@@ revit_units
+title: Project units
+host: revit
+tx: false
+desc: Length, area, volume, angle and slope display units.
+code:
+var u = doc.GetUnits();
+Func<ForgeTypeId, string> f = s => { var fo = u.GetFormatOptions(s); return fo.UseDefault ? "default" : LabelUtils.GetLabelForUnit(fo.GetUnitTypeId()) + " (accuracy " + fo.Accuracy + ")"; };
+return R("length", f(SpecTypeId.Length), "area", f(SpecTypeId.Area), "volume", f(SpecTypeId.Volume), "angle", f(SpecTypeId.Angle), "slope", f(SpecTypeId.Slope));
+
+@@ revit_units_set
+title: Set project units
+host: revit
+desc: Set length unit (mm, cm, m, ft, in, ftin), area (m2, ft2) and volume (m3, ft3) with accuracy.
+arg: length | string | mm, cm, m, ft, in, ftin
+arg: area | string | m2, ft2
+arg: volume | string | m3, ft3
+arg: accuracy | number | Rounding, e.g. 1 or 0.01
+code:
+var u = doc.GetUnits();
+var lmap = new Dictionary<string, ForgeTypeId> { { "mm", UnitTypeId.Millimeters }, { "cm", UnitTypeId.Centimeters }, { "m", UnitTypeId.Meters }, { "ft", UnitTypeId.Feet }, { "in", UnitTypeId.Inches }, { "ftin", UnitTypeId.FeetFractionalInches } };
+if (Has("length")) { var fo = new FormatOptions(lmap[S("length")]); if (Has("accuracy") && S("length") != "ftin") fo.Accuracy = N("accuracy"); u.SetFormatOptions(SpecTypeId.Length, fo); }
+if (Has("area")) u.SetFormatOptions(SpecTypeId.Area, new FormatOptions(S("area") == "ft2" ? UnitTypeId.SquareFeet : UnitTypeId.SquareMeters));
+if (Has("volume")) u.SetFormatOptions(SpecTypeId.Volume, new FormatOptions(S("volume") == "ft3" ? UnitTypeId.CubicFeet : UnitTypeId.CubicMeters));
+doc.SetUnits(u);
+return R("ok", true);
+
+@@ revit_phases
+title: Phases & phase filters
+host: revit
+tx: false
+desc: Project phases (in order) and phase filters, with element counts created per phase.
+code:
+var counts = Col().WhereElementIsNotElementType().Where(e => e.CreatedPhaseId != ElementId.InvalidElementId).GroupBy(e => IdOf(e.CreatedPhaseId)).ToDictionary(g => g.Key, g => g.Count());
+var phases = new List<object>(); foreach (Phase p in doc.Phases) phases.Add(R("id", IdOf(p), "name", p.Name, "elementsCreated", counts.ContainsKey(IdOf(p)) ? counts[IdOf(p)] : 0));
+return R("phases", phases, "filters", All<PhaseFilter>().Select(f => (object)f.Name).ToList());
+
+@@ revit_design_options
+title: Design options
+host: revit
+tx: false
+desc: Design option sets and options (primary flag) with element counts.
+code:
+return All<DesignOption>().Select(o => (object)R("id", IdOf(o), "name", o.Name, "primary", o.IsPrimary,
+  "set", Name(o.get_Parameter(BuiltInParameter.OPTION_SET_ID) == null ? ElementId.InvalidElementId : o.get_Parameter(BuiltInParameter.OPTION_SET_ID).AsElementId()),
+  "elements", Col().WherePasses(new ElementDesignOptionFilter(o.Id)).GetElementCount())).ToList();
+
+@@ revit_worksets
+title: Worksets
+host: revit
+tx: false
+desc: User worksets with owner, open/editable state, default visibility and element counts.
+code:
+if (!doc.IsWorkshared) return R("workshared", false);
+return new FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset).Select(w => (object)R("id", w.Id.IntegerValue, "name", w.Name, "owner", w.Owner, "open", w.IsOpen, "editable", w.IsEditable, "visibleByDefault", w.IsVisibleByDefault,
+  "elements", Col().WherePasses(new ElementWorksetFilter(w.Id)).GetElementCount())).ToList();
+
+@@ revit_workset_create
+title: Create worksets
+host: revit
+desc: Create user worksets (enables worksharing first if needed).
+arg: names | strings! | Workset names
+code:
+if (!doc.IsWorkshared) doc.EnableWorksharing("Shared Levels and Grids", "Workset1");
+var made = new List<object>();
+foreach (var n in SL("names")) if (WorksetTable.IsWorksetNameUnique(doc, n)) made.Add(Workset.Create(doc, n).Name);
+return R("created", made);
+
+@@ revit_element_owner
+title: Element ownership (worksharing)
+host: revit
+tx: false
+desc: Creator, owner, last changed by and checkout status of elements in a workshared model.
+arg: ids | ids | Elements (omit = selection)
+code:
+if (!doc.IsWorkshared) Fail("Model is not workshared");
+return Elems("ids").Select(e => { var t = WorksharingUtils.GetWorksharingTooltipInfo(doc, e.Id); return (object)R("id", IdOf(e), "creator", t.Creator, "owner", t.Owner, "lastChangedBy", t.LastChangedBy, "status", WorksharingUtils.GetCheckoutStatus(doc, e.Id).ToString()); }).ToList();
+
+@@ revit_sync_central
+title: Synchronize with central
+host: revit
+tx: false
+readonly: false
+desc: Synchronize with central (comment, relinquish all, compact). Workshared models only.
+arg: comment | string | Comment
+arg: compact | boolean | Compact central
+code:
+if (!doc.IsWorkshared) Fail("Model is not workshared");
+var t = new TransactWithCentralOptions(); var s = new SynchronizeWithCentralOptions { Comment = S("comment", "BURAK BIM sync"), Compact = B("compact") };
+var r = new RelinquishOptions(true); s.SetRelinquishOptions(r);
+doc.SynchronizeWithCentral(t, s);
+return R("synced", true);
+
+@@ revit_links
+title: Revit links
+host: revit
+tx: false
+desc: Linked Revit models (type, path, loaded status, instances, pinned, positioning).
+code:
+return All<RevitLinkType>().Select(t => { var ext = t.GetExternalFileReference(); return (object)R("id", IdOf(t), "name", t.Name,
+  "path", ext == null ? null : ModelPathUtils.ConvertModelPathToUserVisiblePath(ext.GetAbsolutePath()), "loaded", RevitLinkType.IsLoaded(doc, t.Id),
+  "instances", All<RevitLinkInstance>().Where(i => i.GetTypeId() == t.Id).Select(i => (object)R("id", IdOf(i), "pinned", i.Pinned)).ToList()); }).ToList();
+
+@@ revit_link_add
+title: Link a Revit model
+host: revit
+desc: Link a .rvt model (origin to origin or shared coordinates).
+arg: path | string! | .rvt path
+arg: shared | boolean | Shared coordinates positioning
+code:
+var mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(S("path"));
+var res = RevitLinkType.Create(doc, mp, new RevitLinkOptions(false));
+var inst = RevitLinkInstance.Create(doc, res.ElementId, B("shared") ? ImportPlacement.Shared : ImportPlacement.Origin);
+return R("type", IdOf(res.ElementId), "instance", IdOf(inst));
+
+@@ revit_link_manage
+title: Reload / unload links
+host: revit
+tx: false
+readonly: false
+desc: Reload, unload or reload-from a new path for a Revit link type.
+arg: link | string! | Link type name
+arg: action | string! | reload, unload, reloadFrom
+arg: path | string | New path (reloadFrom)
+code:
+var t = All<RevitLinkType>().FirstOrDefault(x => x.Name.StartsWith(S("link"), StringComparison.OrdinalIgnoreCase)); if (t == null) Fail("Link not found");
+var a = S("action").ToLowerInvariant();
+if (a == "unload") t.Unload(null);
+else if (a == "reloadfrom") t.LoadFrom(ModelPathUtils.ConvertUserVisiblePathToModelPath(S("path")), new WorksetConfiguration());
+else t.Reload();
+return R("link", t.Name, "action", a, "loaded", RevitLinkType.IsLoaded(doc, t.Id));
+
+@@ revit_link_elements
+title: Elements in a linked model
+host: revit
+tx: false
+desc: Query elements of a category inside a linked model (with transformed positions in host coordinates).
+arg: link | string | Link instance name contains (default first)
+arg: category | string! | Category
+arg: limit | integer | Max (default 300)
+code:
+var li = All<RevitLinkInstance>().FirstOrDefault(i => !Has("link") || i.Name.IndexOf(S("link"), StringComparison.OrdinalIgnoreCase) >= 0); if (li == null) Fail("No link");
+var ld = li.GetLinkDocument(); if (ld == null) Fail("Link not loaded"); var tf = li.GetTotalTransform();
+var cat = BurakBim.Bridge.Revit.RevitCommands.FindCategory(ld, S("category"));
+return R("link", li.Name, "elements", new FilteredElementCollector(ld).OfCategoryId(cat.Id).WhereElementIsNotElementType().Take(I("limit", 300)).Select(e => {
+   var bb = e.get_BoundingBox(null); return (object)R("id", IdOf(e), "name", e.Name, "type", ld.GetElement(e.GetTypeId()) == null ? null : ld.GetElement(e.GetTypeId()).Name, "center", bb == null ? null : Out(tf.OfPoint((bb.Min + bb.Max) / 2))); }).ToList());
+
+@@ revit_cad_files
+title: CAD imports & links
+host: revit
+tx: false
+desc: DWG/DXF/DGN imports and links with view-specific flag, owner view and level - QA (imports bloat models).
+code:
+return All<ImportInstance>().Select(i => (object)R("id", IdOf(i), "name", Name(i.GetTypeId()), "linked", i.IsLinked, "viewSpecific", i.ViewSpecific, "ownerView", Name(i.OwnerViewId), "pinned", i.Pinned)).ToList();
+
+@@ revit_cad_link
+title: Link / import DWG
+host: revit
+desc: Link (or import) a DWG/DXF into a view or the model, auto-centered or origin-to-origin, with units.
+arg: path | string! | DWG path
+arg: link | boolean | Link instead of import (default true)
+arg: view | string | View (default active) - for current view only placement
+arg: thisViewOnly | boolean | Current view only
+arg: placement | string | Origin (default), Centered, Shared
+code:
+var o = new DWGImportOptions { ThisViewOnly = B("thisViewOnly"), Unit = ImportUnit.Default };
+ImportPlacement ip; if (Enum.TryParse(S("placement", "Origin"), true, out ip)) o.Placement = ip;
+ElementId id; var v = ViewArg();
+if (B("link", true)) doc.Link(S("path"), o, v, out id); else doc.Import(S("path"), o, v, out id);
+return R("id", IdOf(id));
+
+@@ revit_cad_cleanup
+title: Delete CAD imports
+host: revit
+desc: Delete imported (not linked) CAD instances - optionally only view-specific ones. Dry run first.
+arg: includeLinked | boolean | Also delete links
+arg: dryRun | boolean | Only list (default true)
+code:
+var c = All<ImportInstance>().Where(i => B("includeLinked") || !i.IsLinked).Select(i => i.Id).ToList();
+if (!B("dryRun", true)) doc.Delete(c);
+return R("count", c.Count, "deleted", !B("dryRun", true));
+
+@@ revit_materials_report
+title: Materials
+host: revit
+tx: false
+desc: Materials with class, color, transparency, appearance/structural/thermal assets.
+arg: search | string | Name contains
+code:
+return All<Material>().Where(m => !Has("search") || m.Name.IndexOf(S("search"), StringComparison.OrdinalIgnoreCase) >= 0)
+  .Select(m => (object)R("id", IdOf(m), "name", m.Name, "class", m.MaterialClass, "color", m.Color.IsValid ? "#" + m.Color.Red.ToString("X2") + m.Color.Green.ToString("X2") + m.Color.Blue.ToString("X2") : null,
+     "transparency", m.Transparency, "appearanceAsset", Name(m.AppearanceAssetId), "structuralAsset", Name(m.StructuralAssetId), "thermalAsset", Name(m.ThermalAssetId))).ToList();
+
+@@ revit_material_create
+title: Create / edit material
+host: revit
+desc: Create a material (or edit an existing one): color, transparency, class, cut/surface patterns.
+arg: name | string! | Material name
+arg: color | any | "#RRGGBB" or [r,g,b]
+arg: transparency | integer | 0-100
+arg: materialClass | string | e.g. Concrete, Masonry, Metal, Wood
+arg: duplicateFrom | string | Copy an existing material first
+code:
+var m = All<Material>().FirstOrDefault(x => x.Name == S("name"));
+if (m == null)
+{
+    if (Has("duplicateFrom")) m = All<Material>().First(x => x.Name == S("duplicateFrom")).Duplicate(S("name"));
+    else m = (Material)doc.GetElement(Material.Create(doc, S("name")));
+}
+if (Has("color")) m.Color = ColorArg("color", m.Color);
+if (Has("transparency")) m.Transparency = I("transparency");
+if (Has("materialClass")) m.MaterialClass = S("materialClass");
+return R("id", IdOf(m), "name", m.Name);
+
+@@ revit_material_assign
+title: Assign material
+host: revit
+desc: Assign a material to elements' Material / Structural Material parameter, or to a layer of their type (layerIndex).
+arg: ids | ids | Elements (omit = selection)
+arg: material | string! | Material name
+arg: param | string | Parameter name (default Material, then Structural Material)
+arg: layerIndex | integer | Compound layer index of the type (walls/floors/roofs)
+code:
+var m = All<Material>().FirstOrDefault(x => x.Name.Equals(S("material"), StringComparison.OrdinalIgnoreCase)); if (m == null) Fail("Material not found");
+int n = 0;
+foreach (var e in Elems("ids"))
+{
+    if (Has("layerIndex"))
+    {
+        var t = doc.GetElement(e.GetTypeId()) as HostObjAttributes; if (t == null) continue;
+        var cs = t.GetCompoundStructure(); cs.SetMaterialId(I("layerIndex"), m.Id); t.SetCompoundStructure(cs); n++; continue;
+    }
+    var p = Prm(e, S("param", "Material")) ?? e.get_Parameter(BuiltInParameter.STRUCTURAL_MATERIAL_PARAM) ?? e.get_Parameter(BuiltInParameter.MATERIAL_ID_PARAM);
+    if (p == null || p.IsReadOnly) { var tp = Prm(doc.GetElement(e.GetTypeId()), S("param", "Material")); if (tp != null && !tp.IsReadOnly) { tp.Set(m.Id); n++; } continue; }
+    p.Set(m.Id); n++;
+}
+return R("assigned", n);
+
+@@ revit_line_styles
+title: Line styles
+host: revit
+tx: false
+desc: Line styles (subcategories of Lines) with color, weight and pattern.
+code:
+var lines = doc.Settings.Categories.get_Item(BuiltInCategory.OST_Lines); var r = new List<object>();
+foreach (Category c in lines.SubCategories) r.Add(R("name", c.Name, "color", c.LineColor.IsValid ? "#" + c.LineColor.Red.ToString("X2") + c.LineColor.Green.ToString("X2") + c.LineColor.Blue.ToString("X2") : null, "weight", c.GetLineWeight(GraphicsStyleType.Projection), "pattern", Name(c.GetLinePatternId(GraphicsStyleType.Projection))));
+return r;
+
+@@ revit_line_style_create
+title: Create line style
+host: revit
+desc: Create a line style with color and weight (and optional line pattern).
+arg: name | string! | Name
+arg: color | any | "#RRGGBB"
+arg: weight | integer | 1-16
+arg: pattern | string | Line pattern name
+code:
+var lines = doc.Settings.Categories.get_Item(BuiltInCategory.OST_Lines);
+var sc = doc.Settings.Categories.NewSubcategory(lines, S("name"));
+sc.LineColor = ColorArg("color", new Color(0, 0, 0)); if (Has("weight")) sc.SetLineWeight(I("weight"), GraphicsStyleType.Projection);
+if (Has("pattern")) { var lp = All<LinePatternElement>().FirstOrDefault(p => p.Name == S("pattern")); if (lp != null) sc.SetLinePatternId(lp.Id, GraphicsStyleType.Projection); }
+return R("name", sc.Name);
+
+@@ revit_object_style
+title: Set object style
+host: revit
+desc: Set a category's (or subcategory's) projection/cut line weight and color in Object Styles.
+arg: category | string! | Category or subcategory name
+arg: color | any | Color
+arg: projectionWeight | integer | 1-16
+arg: cutWeight | integer | 1-16
+code:
+var c = Cat(S("category"));
+if (Has("color")) c.LineColor = ColorArg("color", c.LineColor);
+if (Has("projectionWeight")) c.SetLineWeight(I("projectionWeight"), GraphicsStyleType.Projection);
+if (Has("cutWeight")) c.SetLineWeight(I("cutWeight"), GraphicsStyleType.Cut);
+return R("category", c.Name);
+
+@@ revit_annotation_types
+title: Annotation types
+host: revit
+tx: false
+desc: Text types, dimension types, tag families, fill patterns and line patterns available.
+code:
+return R("textTypes", All<TextNoteType>().Select(t => (object)t.Name).ToList(), "dimensionTypes", All<DimensionType>().Select(t => (object)(t.StyleType + ": " + t.Name)).Take(200).ToList(),
+  "fillPatterns", All<FillPatternElement>().Select(f => (object)f.Name).ToList(), "linePatterns", All<LinePatternElement>().Select(f => (object)f.Name).ToList(),
+  "filledRegionTypes", All<FilledRegionType>().Select(f => (object)f.Name).ToList());
+
+@@ revit_text_type_create
+title: Create text type
+host: revit
+desc: Create a text type by duplicating one: font, size (mm), bold.
+arg: name | string! | New text type name
+arg: font | string | Font, e.g. Arial
+arg: sizeMm | number | Text size (paper mm)
+arg: bold | boolean | Bold
+code:
+var t = (TextNoteType)All<TextNoteType>().First().Duplicate(S("name"));
+if (Has("font")) t.get_Parameter(BuiltInParameter.TEXT_FONT).Set(S("font"));
+if (Has("sizeMm")) t.get_Parameter(BuiltInParameter.TEXT_SIZE).Set(N("sizeMm") / 304.8);
+if (Has("bold")) t.get_Parameter(BuiltInParameter.TEXT_STYLE_BOLD).Set(B("bold") ? 1 : 0);
+return R("id", IdOf(t));
+
+@@ revit_model_health
+title: Model health check
+host: revit
+tx: false
+desc: One-shot model audit: warnings, families, in-place families, CAD imports, groups, views not on sheets, unplaced rooms, purgeable types, file size.
+code:
+var placed = new HashSet<long>(); foreach (var s in All<ViewSheet>()) foreach (var v in s.GetAllPlacedViews()) placed.Add(IdOf(v));
+long size = 0; try { if (!string.IsNullOrEmpty(doc.PathName) && System.IO.File.Exists(doc.PathName)) size = new System.IO.FileInfo(doc.PathName).Length; } catch { }
+var rooms = OfCat(BuiltInCategory.OST_Rooms).Cast<Room>().ToList();
+var warnings = doc.GetWarnings();
+return R("fileSizeMB", Math.Round(size / 1048576.0, 1), "elements", Col().WhereElementIsNotElementType().GetElementCount(),
+  "warnings", warnings.Count, "topWarnings", warnings.GroupBy(w => w.GetDescriptionText()).OrderByDescending(g => g.Count()).Take(10).ToDictionary(g => g.Key, g => (object)g.Count()),
+  "families", All<Family>().Count(), "inPlaceFamilies", All<Family>().Count(f => f.IsInPlace), "cadImports", All<ImportInstance>().Count(i => !i.IsLinked), "cadLinks", All<ImportInstance>().Count(i => i.IsLinked),
+  "groupTypes", All<GroupType>().Count(), "views", All<View>().Count(v => !v.IsTemplate), "viewsNotOnSheets", All<View>().Count(v => !v.IsTemplate && v.CanBePrinted && !(v is ViewSheet) && !(v is ViewSchedule) && !placed.Contains(IdOf(v))),
+  "sheets", All<ViewSheet>().Count(), "unplacedRooms", rooms.Count(r => r.Location == null), "unenclosedRooms", rooms.Count(r => r.Location != null && r.Area <= 0),
+  "links", All<RevitLinkInstance>().Count(), "worksets", doc.IsWorkshared ? new FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset).Count() : 0);
+
+@@ revit_warnings_grouped
+title: Warnings grouped
+host: revit
+tx: false
+desc: Model warnings grouped by message with counts and up to 20 element ids each.
+code:
+return doc.GetWarnings().GroupBy(w => w.GetDescriptionText()).OrderByDescending(g => g.Count())
+ .Select(g => (object)R("message", g.Key, "count", g.Count(), "elements", g.SelectMany(w => w.GetFailingElements()).Take(20).Select(i => (object)IdOf(i)).ToList())).ToList();
+
+@@ revit_naming_audit
+title: Naming standard audit
+host: revit
+tx: false
+desc: Check views, sheets, families, types, levels or materials against a regex naming standard.
+arg: target | string! | views, sheets, families, types, levels, materials, worksets
+arg: pattern | string! | Regex the names must match, e.g. ^[A-Z]{1,2} - .+$
+code:
+var rx = new System.Text.RegularExpressions.Regex(S("pattern")); IEnumerable<string> names;
+switch (S("target").ToLowerInvariant())
+{
+    case "views": names = All<View>().Where(v => !v.IsTemplate && !(v is ViewSheet)).Select(v => v.Name); break;
+    case "sheets": names = All<ViewSheet>().Select(s => s.SheetNumber + " - " + s.Name); break;
+    case "families": names = All<Family>().Select(f => f.Name); break;
+    case "types": names = Col().WhereElementIsElementType().Select(t => t.Name); break;
+    case "levels": names = Levels().Select(l => l.Name); break;
+    case "materials": names = All<Material>().Select(m => m.Name); break;
+    default: names = doc.IsWorkshared ? new FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset).Select(w => w.Name) : Enumerable.Empty<string>(); break;
+}
+var all = names.Distinct().ToList(); var bad = all.Where(n => !rx.IsMatch(n)).ToList();
+return R("checked", all.Count, "failing", bad.Count, "names", bad.Take(500).Cast<object>().ToList());
+
+@@ revit_starting_view
+title: Set starting view
+host: revit
+desc: Set the model's starting view (e.g. a cover sheet).
+arg: view | string! | View or sheet
+code:
+var sv = StartingViewSettings.GetStartingViewSettings(doc); sv.ViewId = ViewArg().Id;
+return R("startingView", Name(sv.ViewId));
+
+@@ revit_documents
+title: Open documents
+host: revit
+tx: false
+desc: All documents open in this Revit session (projects, families, links).
+code:
+var r = new List<object>(); foreach (Document d in app.Documents) r.Add(R("title", d.Title, "path", d.PathName, "family", d.IsFamilyDocument, "linked", d.IsLinked, "modified", d.IsModified, "active", d.Equals(doc)));
+return r;
+
+@@ revit_family_edit_parameter
+title: Add parameter to a family (family editor)
+host: revit
+tx: false
+readonly: false
+desc: Open a loaded family in the background, add a family parameter (instance/type, data type), and load it back into the project.
+arg: family | string! | Family name
+arg: name | string! | Parameter name
+arg: dataType | string | text (default), length, number, integer, yesno, area, volume
+arg: instance | boolean | Instance parameter (default type)
+arg: value | any | Default value for every type
+code:
+var fam = All<Family>().FirstOrDefault(f => f.Name == S("family")); if (fam == null) Fail("Family not loaded");
+if (fam.IsInPlace || !fam.IsEditable) Fail("Family is not editable");
+var fdoc = doc.EditFamily(fam);
+var dt = S("dataType", "text"); ForgeTypeId spec = dt == "length" ? SpecTypeId.Length : dt == "number" ? SpecTypeId.Number : dt == "integer" ? SpecTypeId.Int.Integer : dt == "yesno" ? SpecTypeId.Boolean.YesNo : dt == "area" ? SpecTypeId.Area : dt == "volume" ? SpecTypeId.Volume : SpecTypeId.String.Text;
+using (var t = new Transaction(fdoc, "BURAK BIM: add parameter"))
+{
+    t.Start();
+    var fp = fdoc.FamilyManager.AddParameter(S("name"), GroupTypeId.Data, spec, B("instance"));
+    if (Has("value")) foreach (FamilyType ft in fdoc.FamilyManager.Types)
+    {
+        fdoc.FamilyManager.CurrentType = ft;
+        if (spec == SpecTypeId.String.Text) fdoc.FamilyManager.Set(fp, S("value"));
+        else if (spec == SpecTypeId.Length) fdoc.FamilyManager.Set(fp, Ft(N("value")));
+        else if (spec == SpecTypeId.Int.Integer || spec == SpecTypeId.Boolean.YesNo) fdoc.FamilyManager.Set(fp, I("value"));
+        else fdoc.FamilyManager.Set(fp, N("value"));
+    }
+    t.Commit();
+}
+var loaded = fdoc.LoadFamily(doc, OverwriteOptions());
+fdoc.Close(false);
+return R("family", fam.Name, "parameter", S("name"), "reloaded", loaded != null);
+
+@@ revit_family_reload
+title: Load / reload families from folder
+host: revit
+tx: false
+readonly: false
+desc: Load (or reload, overwriting parameter values) every .rfa in a folder or a single file - e.g. after updating a company library.
+arg: path | string! | .rfa file or folder
+arg: recursive | boolean | Include subfolders
+code:
+var files = System.IO.Directory.Exists(S("path")) ? System.IO.Directory.GetFiles(S("path"), "*.rfa", B("recursive") ? System.IO.SearchOption.AllDirectories : System.IO.SearchOption.TopDirectoryOnly).ToList() : new List<string> { S("path") };
+var ok = new List<object>(); var failed = new List<object>();
+using (var t = new Transaction(doc, "BURAK BIM: load families"))
+{
+    t.Start();
+    foreach (var f in files) { Family fam; try { if (doc.LoadFamily(f, OverwriteOptions(), out fam)) ok.Add(System.IO.Path.GetFileNameWithoutExtension(f)); else failed.Add(f); } catch (Exception ex) { failed.Add(f + ": " + ex.Message); } }
+    t.Commit();
+}
+return R("loaded", ok, "failed", failed);

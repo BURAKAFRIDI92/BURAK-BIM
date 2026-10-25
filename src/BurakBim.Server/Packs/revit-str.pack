@@ -1,0 +1,415 @@
+# BURAK BIM tool pack - Revit Structure & Steel: grids, levels, columns, framing, foundations, rebar, loads, takeoffs
+
+@@ revit_grids_report
+title: Grids report
+host: revit
+tx: false
+desc: Grid lines with names, start/end points (mm), orientation and length.
+code:
+return All<Grid>().OrderBy(g => g.Name).Select(g => { var c = g.Curve; return (object)R("id", IdOf(g), "name", g.Name, "start", Out(c.GetEndPoint(0)), "end", Out(c.GetEndPoint(1)), "lengthMm", Mm(c.Length), "curved", !(c is Line)); }).ToList();
+
+@@ revit_grid_system
+title: Create a grid system
+host: revit
+desc: Create a rectangular grid system from spacing lists (mm): vertical grids 1,2,3... along X and horizontal grids A,B,C... along Y.
+arg: origin | point | Origin (default 0,0)
+arg: xSpacings | array! | Spacings between vertical grids, e.g. [6000,6000,4500]
+arg: ySpacings | array! | Spacings between horizontal grids
+arg: extensionMm | number | Grid extension beyond the system (default 2000)
+arg: xNames | string | First vertical grid name (default 1)
+arg: yNames | string | First horizontal grid name (default A)
+code:
+var o = Has("origin") ? P("origin") : XYZ.Zero; double ext = Ft(N("extensionMm", 2000));
+var xs = new List<double> { 0 }; foreach (var d in A("xSpacings")) xs.Add(xs.Last() + Ft(BurakBim.Shared.Json.ToDouble(d)));
+var ys = new List<double> { 0 }; foreach (var d in A("ySpacings")) ys.Add(ys.Last() + Ft(BurakBim.Shared.Json.ToDouble(d)));
+var made = new List<object>();
+int num; int.TryParse(S("xNames", "1"), out num); if (num == 0) num = 1;
+foreach (var x in xs) { var g = Grid.Create(doc, Line.CreateBound(new XYZ(o.X + x, o.Y - ext, 0), new XYZ(o.X + x, o.Y + ys.Last() + ext, 0))); g.Name = (num++).ToString(); made.Add(g.Name); }
+char ch = (S("yNames", "A") ?? "A")[0];
+foreach (var y in ys) { var g = Grid.Create(doc, Line.CreateBound(new XYZ(o.X - ext, o.Y + y, 0), new XYZ(o.X + xs.Last() + ext, o.Y + y, 0))); g.Name = (ch++).ToString(); made.Add(g.Name); }
+return R("grids", made);
+
+@@ revit_grid_rename
+title: Rename grids
+host: revit
+desc: Rename grids with a map {"old":"new"} (two-pass, so swaps like 1<->2 work).
+arg: names | object! | {"1":"A1", "2":"A2"}
+code:
+var map = O("names"); var grids = All<Grid>().ToList(); var todo = new List<KeyValuePair<Grid, string>>();
+foreach (var kv in map) { var g = grids.FirstOrDefault(x => x.Name == kv.Key); if (g != null) todo.Add(new KeyValuePair<Grid, string>(g, Convert.ToString(kv.Value))); }
+foreach (var t in todo) t.Key.Name = "TMP_" + IdOf(t.Key);
+foreach (var t in todo) t.Key.Name = t.Value;
+return R("renamed", todo.Count);
+
+@@ revit_levels_series
+title: Create a series of levels
+host: revit
+desc: Create levels at a storey height (mm) above the highest (or a given) level, with plan views and names.
+arg: count | integer! | Number of new levels
+arg: storeyMm | number! | Floor-to-floor height
+arg: startElevationMm | number | Elevation of the first new level (default highest + storey)
+arg: namePattern | string | e.g. "LEVEL {n}" ({n} = 1-based index of new level)
+arg: createPlans | boolean | Create floor plans (default true)
+code:
+var top = Levels().Last(); double z = Has("startElevationMm") ? Ft(N("startElevationMm")) : top.Elevation + Ft(N("storeyMm"));
+var vft = All<ViewFamilyType>().FirstOrDefault(v => v.ViewFamily == ViewFamily.FloorPlan); var made = new List<object>();
+for (int i = 1; i <= I("count"); i++)
+{
+    var l = Level.Create(doc, z);
+    if (Has("namePattern")) l.Name = S("namePattern").Replace("{n}", i.ToString());
+    if (B("createPlans", true) && vft != null) ViewPlan.Create(doc, vft.Id, l.Id);
+    made.Add(R("id", IdOf(l), "name", l.Name, "elevationMm", Mm(z)));
+    z += Ft(N("storeyMm"));
+}
+return made;
+
+@@ revit_level_edit
+title: Rename / move a level
+host: revit
+desc: Rename a level and/or change its elevation (mm).
+arg: level | string! | Level name
+arg: newName | string | New name
+arg: elevationMm | number | New elevation
+code:
+var l = LvlArg();
+if (Has("newName")) l.Name = S("newName");
+if (Has("elevationMm")) l.Elevation = Ft(N("elevationMm"));
+return R("id", IdOf(l), "name", l.Name, "elevationMm", Mm(l.Elevation));
+
+@@ revit_columns_at_grids
+title: Columns at grid intersections
+host: revit
+desc: Place structural columns at every grid intersection (or listed grids) from a base to a top level.
+arg: baseLevel | string! | Base level
+arg: topLevel | string! | Top level
+arg: type | string | Column type
+arg: grids | strings | Only intersections of these grid names
+arg: skipExisting | boolean | Skip points that already have a column (default true)
+code:
+var bl = Lvl(S("baseLevel")); var tl = Lvl(S("topLevel"));
+var sym = TypeByName<FamilySymbol>(S("type"), BuiltInCategory.OST_StructuralColumns);
+if (!sym.IsActive) { sym.Activate(); doc.Regenerate(); }
+var grids = All<Grid>().Where(g => g.Curve is Line && (SL("grids").Count == 0 || SL("grids").Contains(g.Name))).ToList();
+var existing = OfCat(BuiltInCategory.OST_StructuralColumns).Select(c => ((LocationPoint)c.Location).Point).ToList();
+var made = new List<object>();
+for (int i = 0; i < grids.Count; i++) for (int j = i + 1; j < grids.Count; j++)
+{
+    IntersectionResultArray ira; var a = grids[i].Curve; var b = grids[j].Curve;
+    if (a.Intersect(b, out ira) != SetComparisonResult.Overlap || ira == null) continue;
+    var p = ira.get_Item(0).XYZPoint; p = new XYZ(p.X, p.Y, bl.Elevation);
+    if (B("skipExisting", true) && existing.Any(x => Math.Abs(x.X - p.X) < 0.05 && Math.Abs(x.Y - p.Y) < 0.05)) continue;
+    var c = doc.Create.NewFamilyInstance(p, sym, bl, StructuralType.Column);
+    c.get_Parameter(BuiltInParameter.FAMILY_TOP_LEVEL_PARAM).Set(tl.Id);
+    made.Add(R("id", IdOf(c), "at", grids[i].Name + "/" + grids[j].Name));
+}
+return R("created", made.Count, "columns", made);
+
+@@ revit_beams_between_columns
+title: Beams between columns on a grid
+host: revit
+desc: Create beams along grid lines connecting consecutive columns at a level (frame generator).
+arg: level | string! | Beam level
+arg: type | string | Framing type
+arg: grids | strings | Only these grid lines
+code:
+var lv = LvlArg(); var sym = TypeByName<FamilySymbol>(S("type"), BuiltInCategory.OST_StructuralFraming);
+if (!sym.IsActive) { sym.Activate(); doc.Regenerate(); }
+var cols = OfCat(BuiltInCategory.OST_StructuralColumns).Select(c => ((LocationPoint)c.Location).Point).ToList();
+var made = new List<object>();
+foreach (var g in All<Grid>().Where(g => g.Curve is Line && (SL("grids").Count == 0 || SL("grids").Contains(g.Name))))
+{
+    var line = (Line)g.Curve;
+    var on = cols.Where(p => line.Distance(new XYZ(p.X, p.Y, line.Origin.Z)) < 0.05).Select(p => new XYZ(p.X, p.Y, lv.Elevation))
+       .OrderBy(p => (p - line.GetEndPoint(0)).DotProduct(line.Direction)).ToList();
+    var uniq = new List<XYZ>(); foreach (var p in on) if (uniq.Count == 0 || uniq.Last().DistanceTo(p) > 0.1) uniq.Add(p);
+    for (int i = 0; i + 1 < uniq.Count; i++)
+        made.Add(IdOf(doc.Create.NewFamilyInstance(Line.CreateBound(uniq[i], uniq[i + 1]), sym, lv, StructuralType.Beam)));
+}
+return R("created", made.Count, "ids", made);
+
+@@ revit_framing_report
+title: Structural framing report
+host: revit
+tx: false
+desc: Beams/braces with type, level, length (mm), start/end offsets, material and total length per type.
+code:
+var fr = OfCat(BuiltInCategory.OST_StructuralFraming).OfType<FamilyInstance>().ToList();
+Func<FamilyInstance, double> len = f => { var lc = f.Location as LocationCurve; return lc == null ? 0 : lc.Curve.Length; };
+return R("count", fr.Count,
+  "byType", fr.GroupBy(f => f.Symbol.FamilyName + " : " + f.Symbol.Name).ToDictionary(g => g.Key, g => (object)R("count", g.Count(), "totalLengthM", Math.Round(g.Sum(len) * 0.3048, 2))),
+  "members", fr.Take(1000).Select(f => (object)R("id", IdOf(f), "type", f.Symbol.Name, "usage", f.StructuralUsage.ToString(), "level", Name(f.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM) == null ? ElementId.InvalidElementId : f.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM).AsElementId()),
+     "lengthMm", Mm(len(f)), "material", Name(f.StructuralMaterialId))).ToList());
+
+@@ revit_columns_report
+title: Structural columns report
+host: revit
+tx: false
+desc: Columns with type, base/top level and offsets, height, location and material.
+code:
+return OfCat(BuiltInCategory.OST_StructuralColumns).OfType<FamilyInstance>().Select(c => (object)R("id", IdOf(c), "type", c.Symbol.FamilyName + " : " + c.Symbol.Name, "mark", PrmText(c, "Mark"),
+   "base", PrmText(c, "Base Level"), "top", PrmText(c, "Top Level"), "baseOffsetMm", Mm(c.get_Parameter(BuiltInParameter.FAMILY_BASE_LEVEL_OFFSET_PARAM).AsDouble()),
+   "topOffsetMm", Mm(c.get_Parameter(BuiltInParameter.FAMILY_TOP_LEVEL_OFFSET_PARAM).AsDouble()), "point", Out(((LocationPoint)c.Location).Point), "material", Name(c.StructuralMaterialId))).ToList();
+
+@@ revit_beam_offsets
+title: Set beam end offsets
+host: revit
+desc: Set start/end level offsets (mm) and/or z-justification of beams.
+arg: ids | ids | Beams (omit = selection)
+arg: startOffsetMm | number | Start level offset
+arg: endOffsetMm | number | End level offset
+arg: zJustification | string | Top, Center, Origin, Bottom
+code:
+int n = 0;
+foreach (var e in Elems("ids"))
+{
+    if (Has("startOffsetMm")) { var p = e.get_Parameter(BuiltInParameter.STRUCTURAL_BEAM_END0_ELEVATION); if (p != null) p.Set(Ft(N("startOffsetMm"))); }
+    if (Has("endOffsetMm")) { var p = e.get_Parameter(BuiltInParameter.STRUCTURAL_BEAM_END1_ELEVATION); if (p != null) p.Set(Ft(N("endOffsetMm"))); }
+    if (Has("zJustification")) { var p = e.get_Parameter(BuiltInParameter.Z_JUSTIFICATION); ZJustification z; if (p != null && Enum.TryParse(S("zJustification"), true, out z)) p.Set((int)z); }
+    n++;
+}
+return R("updated", n);
+
+@@ revit_framing_join_ends
+title: Allow / disallow framing end joins
+host: revit
+desc: Allow or disallow joins at both ends of beams (StructuralFramingUtils).
+arg: ids | ids | Beams (omit = selection)
+arg: allow | boolean! | Allow joins
+code:
+int n = 0;
+foreach (var e in Elems("ids")) { var fi = e as FamilyInstance; if (fi == null) continue;
+  for (int end = 0; end < 2; end++) { if (B("allow")) StructuralFramingUtils.AllowJoinAtEnd(fi, end); else StructuralFramingUtils.DisallowJoinAtEnd(fi, end); } n++; }
+return R("updated", n);
+
+@@ revit_footings_under_columns
+title: Isolated footings under columns
+host: revit
+desc: Place an isolated foundation type under every (selected) structural column at its base.
+arg: ids | ids | Columns (omit = all columns)
+arg: type | string | Foundation type
+arg: level | string | Foundation level (default column base level)
+code:
+var sym = TypeByName<FamilySymbol>(S("type"), BuiltInCategory.OST_StructuralFoundation);
+if (!sym.IsActive) { sym.Activate(); doc.Regenerate(); }
+var cols = L("ids").Count > 0 ? Elems("ids") : OfCat(BuiltInCategory.OST_StructuralColumns).ToList(); var made = new List<object>();
+foreach (FamilyInstance c in cols.OfType<FamilyInstance>())
+{
+    var p = ((LocationPoint)c.Location).Point;
+    var lv = Has("level") ? LvlArg() : (Level)doc.GetElement(c.get_Parameter(BuiltInParameter.FAMILY_BASE_LEVEL_PARAM).AsElementId());
+    made.Add(IdOf(doc.Create.NewFamilyInstance(new XYZ(p.X, p.Y, lv.Elevation), sym, lv, StructuralType.Footing)));
+}
+return R("created", made.Count, "ids", made);
+
+@@ revit_wall_foundations
+title: Wall (strip) foundations
+host: revit
+desc: Create strip foundations under walls.
+arg: ids | ids | Walls (omit = selection)
+arg: type | string | Wall foundation type
+code:
+var ft = TypeByName<WallFoundationType>(S("type")); var made = new List<object>();
+foreach (var e in Elems("ids")) { var w = e as Wall; if (w == null) continue; made.Add(IdOf(WallFoundation.Create(doc, ft.Id, w.Id))); }
+return R("created", made);
+
+@@ revit_foundation_slab
+title: Foundation / structural slab
+host: revit
+desc: Create a structural floor (or foundation slab type) from an outline (mm) on a level.
+arg: boundary | array! | [[x,y],...]
+arg: level | string! | Level
+arg: type | string | Floor/slab type
+code:
+var lv = LvlArg(); var pts = A("boundary").Select(p => Pt(p)).ToList(); var loop = new CurveLoop();
+for (int i = 0; i < pts.Count; i++) loop.Append(Line.CreateBound(new XYZ(pts[i].X, pts[i].Y, lv.Elevation), new XYZ(pts[(i + 1) % pts.Count].X, pts[(i + 1) % pts.Count].Y, lv.Elevation)));
+var ft = Has("type") ? All<FloorType>().First(t => t.Name.Equals(S("type"), StringComparison.OrdinalIgnoreCase)) : All<FloorType>().First();
+var f = Floor.Create(doc, new List<CurveLoop> { loop }, ft.Id, lv.Id);
+var sp = f.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL); if (sp != null && !sp.IsReadOnly) sp.Set(1);
+return R("id", IdOf(f));
+
+@@ revit_foundations_report
+title: Foundations report
+host: revit
+tx: false
+desc: Isolated footings, wall foundations and foundation slabs with type and volume (m3).
+code:
+return OfCat(BuiltInCategory.OST_StructuralFoundation).Select(e => (object)R("id", IdOf(e), "class", e.GetType().Name, "type", Name(e.GetTypeId()),
+   "volumeM3", e.get_Parameter(BuiltInParameter.HOST_VOLUME_COMPUTED) == null ? 0 : CuM(e.get_Parameter(BuiltInParameter.HOST_VOLUME_COMPUTED).AsDouble()))).ToList();
+
+@@ revit_concrete_volume_by_level
+title: Concrete volume by level & category
+host: revit
+tx: false
+desc: Concrete takeoff (m3) per level and structural category, from material volumes whose material name contains a keyword.
+arg: materialKeyword | string | Material name contains (default "Concrete"; e.g. "RCC")
+code:
+var kw = S("materialKeyword", "Concrete"); var res = new Dictionary<string, object>();
+var cats = new[] { BuiltInCategory.OST_StructuralColumns, BuiltInCategory.OST_StructuralFraming, BuiltInCategory.OST_Floors, BuiltInCategory.OST_Walls, BuiltInCategory.OST_StructuralFoundation, BuiltInCategory.OST_Stairs };
+foreach (var c in cats) foreach (var e in OfCat(c))
+{
+    double v = 0;
+    foreach (var mid in e.GetMaterialIds(false)) { var n = Name(mid) ?? ""; if (n.IndexOf(kw, StringComparison.OrdinalIgnoreCase) >= 0) v += e.GetMaterialVolume(mid); }
+    if (v <= 0) continue;
+    var lvl = Name(e.LevelId) ?? PrmText(e, "Base Level") ?? PrmText(e, "Reference Level") ?? "(no level)";
+    var key = lvl + " | " + e.Category.Name;
+    res[key] = (res.ContainsKey(key) ? (double)res[key] : 0) + CuM(v);
+}
+return R("totalM3", Math.Round(res.Values.Sum(x => (double)x), 3), "breakdown", res);
+
+@@ revit_steel_tonnage
+title: Steel tonnage
+host: revit
+tx: false
+desc: Structural steel weight (tonnes) per section type from member volume x density (7850 kg/m3 default).
+arg: densityKgM3 | number | Steel density
+arg: materialKeyword | string | Material contains (default "Steel")
+code:
+double rho = N("densityKgM3", 7850); var kw = S("materialKeyword", "Steel"); var res = new Dictionary<string, double>();
+foreach (var c in new[] { BuiltInCategory.OST_StructuralFraming, BuiltInCategory.OST_StructuralColumns })
+  foreach (var e in OfCat(c))
+  {
+      double v = 0; foreach (var mid in e.GetMaterialIds(false)) if ((Name(mid) ?? "").IndexOf(kw, StringComparison.OrdinalIgnoreCase) >= 0) v += e.GetMaterialVolume(mid);
+      if (v <= 0) continue; var k = Name(e.GetTypeId()) ?? "?"; res[k] = (res.ContainsKey(k) ? res[k] : 0) + CuM(v) * rho / 1000.0;
+  }
+return R("totalTonnes", Math.Round(res.Values.Sum(), 3), "bySection", res.ToDictionary(k => k.Key, k => (object)Math.Round(k.Value, 3)));
+
+@@ revit_rebar_report
+title: Rebar report
+host: revit
+tx: false
+desc: Rebar sets with bar type, host, quantity, total length (m) and estimated weight (kg).
+code:
+var list = new List<object>(); double kg = 0;
+foreach (var r in All<Rebar>())
+{
+    var bt = doc.GetElement(r.GetTypeId()) as RebarBarType;
+    double dia = bt == null ? 0 : bt.BarModelDiameter; double total = r.TotalLength;
+    double w = Math.PI * Math.Pow(dia / 2 * 0.3048, 2) * total * 0.3048 * 7850; kg += w;
+    list.Add(R("id", IdOf(r), "barType", bt == null ? null : bt.Name, "diameterMm", Mm(dia), "host", IdOf(r.GetHostId()), "quantity", r.Quantity, "totalLengthM", Math.Round(total * 0.3048, 2), "weightKg", Math.Round(w, 2)));
+}
+return R("sets", list.Count, "totalWeightKg", Math.Round(kg, 1), "rebar", list.Take(2000).ToList());
+
+@@ revit_rebar_cover
+title: Set rebar cover
+host: revit
+desc: Set rebar cover type for top/bottom/other faces of concrete hosts.
+arg: ids | ids | Hosts (omit = selection)
+arg: coverType | string! | Rebar cover type name
+code:
+var ct = All<RebarCoverType>().FirstOrDefault(c => c.Name.Equals(S("coverType"), StringComparison.OrdinalIgnoreCase));
+if (ct == null) Fail("Cover type not found: " + string.Join(", ", All<RebarCoverType>().Select(c => c.Name)));
+int n = 0;
+foreach (var e in Elems("ids"))
+  foreach (var bip in new[] { BuiltInParameter.CLEAR_COVER_TOP, BuiltInParameter.CLEAR_COVER_BOTTOM, BuiltInParameter.CLEAR_COVER_OTHER })
+  { var p = e.get_Parameter(bip); if (p != null && !p.IsReadOnly) { p.Set(ct.Id); n++; } }
+return R("parametersSet", n);
+
+@@ revit_rebar_from_curves
+title: Rebar from curves
+host: revit
+desc: Create a standard rebar in a host from a polyline (mm) with bar type and optional layout (fixed number + spacing along a normal).
+arg: hostId | integer! | Concrete host element
+arg: points | array! | Bar centreline points [[x,y,z],...]
+arg: barType | string | Rebar bar type name
+arg: normal | point | Layout normal vector (default Z)
+arg: quantity | integer | Number of bars (layout)
+arg: spacingMm | number | Spacing (layout)
+code:
+var host = El(I("hostId")); var bt = Has("barType") ? All<RebarBarType>().First(b => b.Name.Equals(S("barType"), StringComparison.OrdinalIgnoreCase)) : All<RebarBarType>().First();
+var pts = A("points").Select(p => Pt(p)).ToList(); var curves = new List<Curve>();
+for (int i = 0; i + 1 < pts.Count; i++) curves.Add(Line.CreateBound(pts[i], pts[i + 1]));
+var normal = Has("normal") ? P("normal").Normalize() : XYZ.BasisZ;
+var r = Rebar.CreateFromCurves(doc, RebarStyle.Standard, bt, null, null, host, normal, curves, RebarHookOrientation.Left, RebarHookOrientation.Left, true, true);
+if (Has("quantity") && Has("spacingMm")) r.GetShapeDrivenAccessor().SetLayoutAsNumberWithSpacing(I("quantity"), Ft(N("spacingMm")), true, true, true);
+return R("id", IdOf(r));
+
+@@ revit_structural_usage
+title: Set structural usage
+host: revit
+desc: Set structural usage of framing (Girder, Joist, Purlin, HorizontalBracing, Other) or walls (Bearing, Shear, NonBearing).
+arg: ids | ids | Elements (omit = selection)
+arg: usage | string! | Usage name
+code:
+int n = 0;
+foreach (var e in Elems("ids"))
+{
+    var fi = e as FamilyInstance; var w = e as Wall;
+    StructuralInstanceUsage iu; StructuralWallUsage wu;
+    if (fi != null && Enum.TryParse(S("usage"), true, out iu)) { fi.StructuralUsage = iu; n++; }
+    else if (w != null && Enum.TryParse(S("usage"), true, out wu)) { w.StructuralUsage = wu; n++; }
+}
+return R("updated", n);
+
+@@ revit_structural_material
+title: Set structural material
+host: revit
+desc: Set the Structural Material of columns/framing/foundations.
+arg: ids | ids | Elements (omit = selection)
+arg: material | string! | Material name
+code:
+var m = All<Material>().FirstOrDefault(x => x.Name.Equals(S("material"), StringComparison.OrdinalIgnoreCase)); if (m == null) Fail("Material not found");
+int n = 0;
+foreach (var e in Elems("ids")) { var p = e.get_Parameter(BuiltInParameter.STRUCTURAL_MATERIAL_PARAM); if (p != null && !p.IsReadOnly) { p.Set(m.Id); n++; } }
+return R("updated", n);
+
+@@ revit_loads_report
+title: Structural loads
+host: revit
+tx: false
+desc: Point, line and area loads with load case, nature and forces.
+code:
+return All<LoadBase>().Select(l => (object)R("id", IdOf(l), "kind", l.GetType().Name, "case", Name(l.LoadCaseId), "hosted", l.IsHosted)).ToList();
+
+@@ revit_load_cases
+title: Load cases & combinations
+host: revit
+tx: false
+desc: Load cases (with nature/category) and load combinations defined in the model.
+code:
+return R("cases", All<LoadCase>().Select(c => (object)R("id", IdOf(c), "name", c.Name, "number", c.Number, "nature", Name(c.NatureId))).ToList(),
+        "combinations", All<LoadCombination>().Select(c => (object)R("id", IdOf(c), "name", c.Name, "type", c.Type.ToString(), "state", c.State.ToString())).ToList());
+
+@@ revit_braces_trusses
+title: Braces, trusses & connections
+host: revit
+tx: false
+desc: Structural trusses, braces and structural connections in the model.
+code:
+return R("trusses", All<Truss>().Select(t => (object)R("id", IdOf(t), "type", Name(t.GetTypeId()))).ToList(),
+  "braces", OfCat(BuiltInCategory.OST_StructuralFraming).OfType<FamilyInstance>().Where(f => f.StructuralType == StructuralType.Brace).Select(f => (object)IdOf(f)).ToList(),
+  "connections", All<StructuralConnectionHandler>().Select(c => (object)R("id", IdOf(c), "type", Name(c.GetTypeId()), "connected", IdList(c.GetConnectedElementIds()))).ToList());
+
+@@ revit_column_grid_check
+title: Columns off grid
+host: revit
+tx: false
+desc: Structural columns that are not on a grid intersection (QA), with distance to the nearest grid (mm).
+arg: toleranceMm | number | Allowed distance (default 10)
+code:
+var lines = All<Grid>().Select(g => g.Curve).OfType<Line>().ToList(); var bad = new List<object>(); double tol = Ft(N("toleranceMm", 10));
+foreach (var c in OfCat(BuiltInCategory.OST_StructuralColumns))
+{
+    var p = ((LocationPoint)c.Location).Point;
+    var ds = lines.Select(l => l.Distance(new XYZ(p.X, p.Y, l.Origin.Z))).OrderBy(d => d).ToList();
+    if (ds.Count < 2 || ds[1] > tol) bad.Add(R("id", IdOf(c), "nearestGridMm", ds.Count == 0 ? -1 : Mm(ds[0]), "secondGridMm", ds.Count < 2 ? -1 : Mm(ds[1])));
+}
+return R("offGrid", bad.Count, "columns", bad);
+
+@@ revit_framing_types
+title: Structural section types
+host: revit
+tx: false
+desc: Loaded column/framing/foundation types with key dimensions.
+code:
+var cats = new[] { BuiltInCategory.OST_StructuralColumns, BuiltInCategory.OST_StructuralFraming, BuiltInCategory.OST_StructuralFoundation };
+var r = new Dictionary<string, object>();
+foreach (var c in cats) r[c.ToString().Replace("OST_", "")] = TypesOfCat(c).OfType<FamilySymbol>().Select(s => (object)(s.FamilyName + " : " + s.Name)).ToList();
+return r;
+
+@@ revit_slab_edge_check
+title: Floors without structural flag
+host: revit
+tx: false
+desc: Floors whose type name suggests structure (slab/RCC) but are not flagged structural, and vice versa.
+code:
+return All<Floor>().Where(f => { var s = f.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL).AsInteger() == 1; var n = f.FloorType.Name.ToLowerInvariant(); bool looks = n.Contains("slab") || n.Contains("rcc") || n.Contains("concrete") || n.Contains("struct"); return looks != s; })
+  .Select(f => (object)R("id", IdOf(f), "type", f.FloorType.Name, "structural", f.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL).AsInteger() == 1)).ToList();

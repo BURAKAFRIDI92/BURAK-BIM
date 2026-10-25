@@ -1,0 +1,19 @@
+BURAK BIM
+Copyright 2026 BURAK BIM
+
+This product is original work of BURAK BIM, licensed under the Apache License 2.0.
+
+Autodesk, Revit, AutoCAD, Civil 3D, Navisworks, Inventor, ReCap, Robot Structural Analysis,
+Plant 3D, Map 3D and Advance Steel are registered trademarks or trademarks of Autodesk, Inc.
+BURAK BIM is an independent product and is not affiliated with or endorsed by Autodesk, Inc.
+Autodesk API assemblies are NOT redistributed: bridges are compiled on the user's machine
+against the user's own licensed installation.
+
+Graphisoft and Archicad are registered trademarks of Graphisoft SE. McNeel, Rhinoceros and Grasshopper are
+trademarks of Robert McNeel & Associates. BURAK BIM is not affiliated with or endorsed by either company.
+
+Third-party data included:
+- src/BurakBim.Server/Packs/archicad-tapir.json: command names, descriptions and JSON schemas of the Tapir
+  Archicad add-on, Copyright (c) 2024 Enzyme APD, MIT License (https://github.com/ENZYME-APD/tapir-archicad-automation).
+- src/BurakBim.Server/Packs/archicad-api.json: command names, parameter names and descriptions of the
+  Graphisoft Archicad JSON API, extracted from Graphisoft's public "archicad" Python package (PyPI).

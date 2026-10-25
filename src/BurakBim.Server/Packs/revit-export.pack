@@ -1,0 +1,269 @@
+# BURAK BIM tool pack - Revit export/import/data exchange, Dynamo, misc automation
+
+@@ revit_export_sheets_pdf
+title: Export sheets to PDF
+host: revit
+tx: false
+readonly: false
+desc: Export sheets (all, by numbers or prefix) to PDF - one combined file or one per sheet (Revit 2022+ native PDF).
+arg: sheets | strings | Sheet numbers
+arg: prefix | string | Sheet number prefix
+arg: combine | boolean | Single combined PDF (default false)
+arg: folder | string | Output folder
+arg: name | string | File name (combined)
+code:
+var ids = All<ViewSheet>().Where(s => !s.IsPlaceholder && (SL("sheets").Count == 0 && !Has("prefix") || SL("sheets").Contains(s.SheetNumber) || (Has("prefix") && s.SheetNumber.StartsWith(S("prefix"))))).OrderBy(s => s.SheetNumber).Select(s => s.Id).ToList();
+var folder = S("folder") ?? BurakBim.Shared.BurakPaths.Sub("exports", "pdf"); System.IO.Directory.CreateDirectory(folder);
+var o = new PDFExportOptions { Combine = B("combine"), FileName = S("name", doc.Title) };
+if (!B("combine")) { var r1 = TableCellCombinedParameterData.Create(); r1.ParamId = new ElementId(BuiltInParameter.SHEET_NUMBER); r1.Separator = " - "; var r2 = TableCellCombinedParameterData.Create(); r2.ParamId = new ElementId(BuiltInParameter.SHEET_NAME); o.SetNamingRule(new List<TableCellCombinedParameterData> { r1, r2 }); }
+doc.Export(folder, ids, o);
+return R("sheets", ids.Count, "folder", folder);
+
+@@ revit_export_sheets_dwg
+title: Export sheets/views to DWG
+host: revit
+tx: false
+readonly: false
+desc: Export sheets or views to DWG using a saved DWG export setup (or defaults); merged views option.
+arg: sheets | strings | Sheet numbers (default all)
+arg: views | strings | View names instead of sheets
+arg: setup | string | Saved export setup name
+arg: folder | string | Output folder
+arg: mergedViews | boolean | Merge views into one DWG per sheet
+code:
+List<ElementId> ids = SL("views").Count > 0 ? All<View>().Where(v => SL("views").Contains(v.Name)).Select(v => v.Id).ToList()
+   : All<ViewSheet>().Where(s => !s.IsPlaceholder && (SL("sheets").Count == 0 || SL("sheets").Contains(s.SheetNumber))).Select(s => s.Id).ToList();
+var folder = S("folder") ?? BurakBim.Shared.BurakPaths.Sub("exports", "dwg"); System.IO.Directory.CreateDirectory(folder);
+DWGExportOptions o = Has("setup") ? DWGExportOptions.GetPredefinedOptions(doc, S("setup")) : new DWGExportOptions();
+if (o == null) o = new DWGExportOptions(); o.MergedViews = B("mergedViews");
+doc.Export(folder, "", ids, o);
+return R("exported", ids.Count, "folder", folder);
+
+@@ revit_export_ifc_options
+title: Export IFC with options
+host: revit
+tx: false
+readonly: false
+desc: Export IFC (IFC2x3, IFC4, IFC4x3...) with a view filter (only visible elements), space boundaries and base quantities.
+arg: version | string | IFC2x3CV2 (default), IFC4, IFC4RV, IFC4DTV, IFC2x3
+arg: view | string | Export only elements visible in this 3D view
+arg: folder | string | Output folder
+arg: name | string | File name
+arg: baseQuantities | boolean | Export base quantities
+code:
+var folder = S("folder") ?? BurakBim.Shared.BurakPaths.Sub("exports", "ifc"); System.IO.Directory.CreateDirectory(folder);
+var o = new IFCExportOptions(); IFCVersion v; if (Enum.TryParse(S("version", "IFC2x3CV2"), true, out v)) o.FileVersion = v;
+if (Has("view")) o.FilterViewId = ViewArg().Id;
+o.ExportBaseQuantities = B("baseQuantities");
+bool ok;
+using (var t = new Transaction(doc, "BURAK BIM: IFC")) { t.Start(); ok = doc.Export(folder, S("name", doc.Title), o); t.Commit(); }
+return R("ok", ok, "folder", folder);
+
+@@ revit_export_nwc_views
+title: Export NWC per 3D view
+host: revit
+tx: false
+readonly: false
+desc: Export one Navisworks NWC per listed 3D view (e.g. per discipline) for coordination.
+arg: views | strings! | 3D view names
+arg: folder | string | Output folder
+code:
+if (!OptionalFunctionalityUtils.IsNavisworksExporterAvailable()) Fail("Navisworks exporter for Revit is not installed");
+var folder = S("folder") ?? BurakBim.Shared.BurakPaths.Sub("exports", "nwc"); System.IO.Directory.CreateDirectory(folder); var made = new List<object>();
+foreach (var vn in SL("views"))
+{
+    var v = All<View3D>().FirstOrDefault(x => x.Name == vn); if (v == null) continue;
+    var o = new NavisworksExportOptions { ExportScope = NavisworksExportScope.View, ViewId = v.Id };
+    var fn = string.Concat((doc.Title + " - " + vn).Split(System.IO.Path.GetInvalidFileNameChars()));
+    doc.Export(folder, fn, o); made.Add(fn + ".nwc");
+}
+return R("folder", folder, "files", made);
+
+@@ revit_export_elements_csv
+title: Export elements & parameters to CSV
+host: revit
+tx: false
+desc: Export elements of a category with chosen parameters (or all) to CSV - for Excel, Power BI, cost, FM.
+arg: category | string! | Category
+arg: params | strings | Parameter names (default all instance parameters)
+arg: file | string | Output .csv path
+code:
+var els = Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType().ToList();
+var names = SL("params").Count > 0 ? SL("params") : els.SelectMany(e => e.Parameters.Cast<Parameter>().Select(p => p.Definition.Name)).Distinct().OrderBy(n => n).ToList();
+var sb = new System.Text.StringBuilder("ElementId,UniqueId,Type," + string.Join(",", names.Select(n => "\"" + n.Replace("\"", "'") + "\"")) + "\n");
+foreach (var e in els) sb.AppendLine(IdOf(e) + "," + e.UniqueId + ",\"" + (Name(e.GetTypeId()) ?? "") + "\"," + string.Join(",", names.Select(n => "\"" + (PrmText(e, n) ?? "").Replace("\"", "'") + "\"")));
+var file = S("file") ?? System.IO.Path.Combine(BurakBim.Shared.BurakPaths.Sub("exports"), S("category") + "-" + DateTime.Now.ToString("yyyyMMdd-HHmm") + ".csv");
+System.IO.File.WriteAllText(file, sb.ToString(), System.Text.Encoding.UTF8);
+return R("file", file, "rows", els.Count, "columns", names.Count + 3);
+
+@@ revit_import_params_csv
+title: Update parameters from CSV
+host: revit
+desc: Update element parameters from a CSV with an ElementId (or UniqueId) column and parameter columns (round-trip with revit_export_elements_csv).
+arg: file | string! | CSV path
+arg: dryRun | boolean | Only report changes (default false)
+code:
+var lines = System.IO.File.ReadAllLines(S("file"));
+Func<string, List<string>> split = line => { var r = new List<string>(); var sb = new System.Text.StringBuilder(); bool q = false; foreach (var ch in line) { if (ch == '"') q = !q; else if (ch == ',' && !q) { r.Add(sb.ToString()); sb.Clear(); } else sb.Append(ch); } r.Add(sb.ToString()); return r; };
+var head = split(lines[0]); int idCol = head.IndexOf("ElementId"), uidCol = head.IndexOf("UniqueId"); int changed = 0, failed = 0;
+for (int i = 1; i < lines.Length; i++)
+{
+    var row = split(lines[i]); if (row.Count < head.Count) continue;
+    Element e = uidCol >= 0 && !string.IsNullOrEmpty(row[uidCol]) ? doc.GetElement(row[uidCol]) : idCol >= 0 ? El(long.Parse(row[idCol])) : null; if (e == null) { failed++; continue; }
+    for (int c = 0; c < head.Count; c++)
+    {
+        if (c == idCol || c == uidCol || head[c] == "Type") continue;
+        var p = Prm(e, head[c]); if (p == null || p.IsReadOnly) continue;
+        var cur = BurakBim.Bridge.Revit.RevitCommands.ParamText(p) ?? "";
+        if (cur == row[c]) continue;
+        if (!B("dryRun")) { try { if (p.StorageType == StorageType.Double) p.SetValueString(row[c]); else BurakBim.Bridge.Revit.RevitCommands.SetParam(p, row[c]); changed++; } catch { failed++; } } else changed++;
+    }
+}
+return R("changes", changed, "failed", failed, "dryRun", B("dryRun"));
+
+@@ revit_export_rooms_csv
+title: Export room data sheet CSV
+host: revit
+tx: false
+desc: Room data (number, name, level, area, perimeter, finishes, department, occupancy) to CSV.
+arg: file | string | Output path
+code:
+var sb = new System.Text.StringBuilder("Number,Name,Level,Area m2,Perimeter m,Volume m3,Department,Floor Finish,Wall Finish,Ceiling Finish,Occupancy\n");
+foreach (Room r in OfCat(BuiltInCategory.OST_Rooms).Cast<Room>().Where(x => x.Area > 0).OrderBy(x => x.Number))
+  sb.AppendLine(string.Join(",", new[] { r.Number, r.Name, r.Level == null ? "" : r.Level.Name, SqM(r.Area).ToString(), Math.Round(r.Perimeter * 0.3048, 2).ToString(), CuM(r.Volume).ToString(), PrmText(r, "Department") ?? "", PrmText(r, "Floor Finish") ?? "", PrmText(r, "Wall Finish") ?? "", PrmText(r, "Ceiling Finish") ?? "", PrmText(r, "Occupancy") ?? "" }.Select(x => "\"" + x + "\"")));
+var file = S("file") ?? System.IO.Path.Combine(BurakBim.Shared.BurakPaths.Sub("exports"), "Rooms-" + DateTime.Now.ToString("yyyyMMdd-HHmm") + ".csv");
+System.IO.File.WriteAllText(file, sb.ToString()); return R("file", file);
+
+@@ revit_export_model_json
+title: Export model summary JSON
+host: revit
+tx: false
+desc: Lightweight JSON of the model (levels, grids, rooms, element counts, types) for dashboards or other AI tools.
+arg: file | string | Output .json path
+code:
+var data = R("title", doc.Title, "exported", DateTime.Now.ToString("s"),
+  "levels", Levels().Select(l => (object)R("name", l.Name, "elevationMm", Mm(l.Elevation))).ToList(),
+  "grids", All<Grid>().Select(g => (object)g.Name).ToList(),
+  "rooms", OfCat(BuiltInCategory.OST_Rooms).Cast<Room>().Where(r => r.Area > 0).Select(r => (object)R("number", r.Number, "name", r.Name, "areaM2", SqM(r.Area))).ToList(),
+  "counts", Col().WhereElementIsNotElementType().Where(e => e.Category != null && e.Category.CategoryType == CategoryType.Model).GroupBy(e => e.Category.Name).ToDictionary(g => g.Key, g => (object)g.Count()));
+var file = S("file") ?? System.IO.Path.Combine(BurakBim.Shared.BurakPaths.Sub("exports"), "Model-" + DateTime.Now.ToString("yyyyMMdd-HHmm") + ".json");
+System.IO.File.WriteAllText(file, BurakBim.Shared.Json.Serialize(data, true)); return R("file", file);
+
+@@ revit_export_families
+title: Save families to folder
+host: revit
+tx: false
+readonly: false
+desc: Save loaded (editable) families as .rfa files into a folder, optionally one category - build a library from a project.
+arg: folder | string! | Output folder
+arg: category | string | Only this category
+code:
+System.IO.Directory.CreateDirectory(S("folder")); var saved = new List<object>();
+foreach (var f in All<Family>().Where(x => x.IsEditable && !x.IsInPlace && (!Has("category") || (x.FamilyCategory != null && x.FamilyCategory.Name == S("category")))).ToList())
+{
+    try { var fd = doc.EditFamily(f); var path = System.IO.Path.Combine(S("folder"), string.Concat(f.Name.Split(System.IO.Path.GetInvalidFileNameChars())) + ".rfa"); fd.SaveAs(path, new SaveAsOptions { OverwriteExistingFile = true }); fd.Close(false); saved.Add(f.Name); }
+    catch (Exception ex) { Print(f.Name + ": " + ex.Message); }
+}
+return R("saved", saved.Count, "families", saved);
+
+@@ revit_export_images_views
+title: Export images of views
+host: revit
+tx: false
+readonly: false
+desc: Export PNG images of several views/sheets (e.g. every 3D view) at a pixel width.
+arg: views | strings | View names (default all 3D views)
+arg: pixels | integer | Width (default 1920)
+arg: folder | string | Output folder
+code:
+var vs = SL("views").Count > 0 ? All<View>().Where(v => SL("views").Contains(v.Name)).ToList() : All<View3D>().Where(v => !v.IsTemplate).Cast<View>().ToList();
+var folder = S("folder") ?? BurakBim.Shared.BurakPaths.Sub("exports", "images"); System.IO.Directory.CreateDirectory(folder);
+var o = new ImageExportOptions { FilePath = System.IO.Path.Combine(folder, "view"), ExportRange = ExportRange.SetOfViews, HLRandWFViewsFileType = ImageFileType.PNG, ShadowViewsFileType = ImageFileType.PNG, PixelSize = I("pixels", 1920), ZoomType = ZoomFitType.FitToPage };
+o.SetViewsAndSheets(vs.Select(v => v.Id).ToList()); doc.ExportImage(o);
+return R("folder", folder, "views", vs.Count);
+
+@@ revit_dynamo_run
+title: Run a Dynamo graph
+host: revit
+tx: false
+readonly: false
+desc: Run a Dynamo (.dyn) graph inside Revit in automation mode (Dynamo for Revit must be installed). Graph inputs can be set beforehand in the .dyn or via Dynamo Player.
+arg: path | string! | .dyn file
+arg: showUi | boolean | Show the Dynamo window (default false)
+code:
+if (!System.IO.File.Exists(S("path"))) Fail("Graph not found: " + S("path"));
+var asm = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == "DynamoRevitDS");
+if (asm == null)
+{
+    var root = System.IO.Path.GetDirectoryName(System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName);
+    var cand = System.IO.Directory.GetFiles(System.IO.Path.Combine(root, "AddIns"), "DynamoRevitDS.dll", System.IO.SearchOption.AllDirectories).FirstOrDefault();
+    if (cand == null) Fail("Dynamo for Revit not found");
+    asm = System.Reflection.Assembly.LoadFrom(cand);
+}
+var keys = asm.GetType("Dynamo.Applications.JournalKeys");
+Func<string, string> K = n => (string)keys.GetField(n).GetValue(null);
+var data = new Dictionary<string, string> { { K("ShowUiKey"), B("showUi").ToString() }, { K("AutomationModeKey"), "True" }, { K("DynPathKey"), S("path") }, { K("DynPathExecuteKey"), "True" }, { K("ForceManualRunKey"), "False" }, { K("ModelShutDownKey"), "False" } };
+var cdType = asm.GetType("Dynamo.Applications.DynamoRevitCommandData");
+var cd = Activator.CreateInstance(cdType);
+cdType.GetProperty("Application").SetValue(cd, uiapp);
+cdType.GetProperty("JournalData").SetValue(cd, data);
+var dr = Activator.CreateInstance(asm.GetType("Dynamo.Applications.DynamoRevit"));
+var res = dr.GetType().GetMethod("ExecuteCommand").Invoke(dr, new object[] { cd });
+return R("ran", S("path"), "result", Convert.ToString(res));
+
+@@ revit_purge_view_specific
+title: Remove empty / unused view templates & filters
+host: revit
+desc: Delete view templates and filters not used by any view (dry run first).
+arg: dryRun | boolean | Only list (default true)
+code:
+var views = All<View>().Where(v => !v.IsTemplate).ToList();
+var usedT = new HashSet<long>(views.Select(v => IdOf(v.ViewTemplateId)));
+var usedF = new HashSet<long>(); foreach (var v in All<View>()) { try { foreach (var f in v.GetFilters()) usedF.Add(IdOf(f)); } catch { } }
+var t = All<View>().Where(v => v.IsTemplate && !usedT.Contains(IdOf(v))).Select(v => v.Id).ToList();
+var f2 = All<FilterElement>().Where(f => !usedF.Contains(IdOf(f))).Select(f => f.Id).ToList();
+if (!B("dryRun", true)) doc.Delete(t.Concat(f2).ToList());
+return R("unusedTemplates", t.Count, "unusedFilters", f2.Count, "deleted", !B("dryRun", true));
+
+@@ revit_batch_parameter_formula
+title: Calculate a parameter from others
+host: revit
+desc: Set a text/number parameter from a template using other parameters, e.g. "{Level}-{Mark}" or numeric "{Width}*{Height}" (numbers in internal units unless suffix _mm).
+arg: category | string! | Category
+arg: target | string! | Parameter to write
+arg: template | string! | Template with {Param} placeholders
+code:
+int n = 0; var rx = new System.Text.RegularExpressions.Regex(@"\{([^}]+)\}");
+foreach (var e in Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType().ToList())
+{
+    var val = rx.Replace(S("template"), m => PrmText(e, m.Groups[1].Value) ?? "");
+    try { SetPrm(e, S("target"), val); n++; } catch { }
+}
+return R("updated", n);
+
+@@ revit_sequence_numbering
+title: Sequential numbering by position
+host: revit
+desc: Write sequential numbers (prefix + n) into a parameter for elements of a category ordered by X, Y or by level then X - marks for columns, doors, piles.
+arg: category | string! | Category
+arg: param | string | Parameter (default Mark)
+arg: prefix | string | Prefix
+arg: order | string | xy (default), yx, level
+arg: start | integer | Start (default 1)
+code:
+var els = Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType().Where(e => e.Location != null).ToList();
+Func<Element, XYZ> pos = e => { var lp = e.Location as LocationPoint; var lc = e.Location as LocationCurve; return lp != null ? lp.Point : lc != null ? lc.Curve.Evaluate(0.5, true) : XYZ.Zero; };
+IEnumerable<Element> ordered = S("order", "xy") == "yx" ? els.OrderByDescending(e => Math.Round(pos(e).Y, 1)).ThenBy(e => pos(e).X)
+   : S("order") == "level" ? els.OrderBy(e => pos(e).Z).ThenByDescending(e => Math.Round(pos(e).Y, 1)).ThenBy(e => pos(e).X) : els.OrderBy(e => Math.Round(pos(e).X, 1)).ThenByDescending(e => pos(e).Y);
+int n = I("start", 1);
+foreach (var e in ordered) { try { SetPrm(e, S("param", "Mark"), S("prefix", "") + n); } catch { } n++; }
+return R("numbered", n - I("start", 1));
+
+@@ revit_copy_monitor_report
+title: Copy/monitor & shared coordinates report
+host: revit
+tx: false
+desc: Elements monitoring linked elements (copy/monitor) and links positioning - coordination QA.
+code:
+var monitored = Col().WhereElementIsNotElementType().Where(e => { try { return e.IsMonitoringLinkElement() || e.IsMonitoringLocalElement(); } catch { return false; } }).Select(e => (object)R("id", IdOf(e), "category", e.Category == null ? null : e.Category.Name)).ToList();
+return R("monitoringElements", monitored.Count, "elements", monitored.Take(500).ToList(), "links", All<RevitLinkInstance>().Select(l => (object)l.Name).ToList());

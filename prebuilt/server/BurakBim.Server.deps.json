@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "BurakBim.Server/1.2.0": {
+        "runtime": {
+          "BurakBim.Server.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "BurakBim.Server/1.2.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

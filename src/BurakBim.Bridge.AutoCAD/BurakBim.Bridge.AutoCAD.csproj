@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- BURAK BIM AutoCAD-family bridge (AutoCAD, Civil 3D, Plant 3D, Map 3D, MEP, Architecture, Electrical, Mechanical, Advance Steel).
+       Manual build: dotnet build -c Release -p:AcadYear=2024 -p:AcadDir="C:\Program Files\Autodesk\AutoCAD 2024" -->
+  <PropertyGroup>
+    <AcadYear Condition="'$(AcadYear)' == ''">2024</AcadYear>
+    <AcadDir Condition="'$(AcadDir)' == ''">C:\Program Files\Autodesk\AutoCAD $(AcadYear)</AcadDir>
+    <UseRoslyn Condition="'$(UseRoslyn)' == ''">true</UseRoslyn>
+    <TargetFramework Condition="$(AcadYear) &lt; 2025">net48</TargetFramework>
+    <TargetFramework Condition="$(AcadYear) &gt;= 2025">net8.0-windows</TargetFramework>
+    <AssemblyName>BurakBim.Bridge.AutoCAD</AssemblyName>
+    <RootNamespace>BurakBim.Bridge.AutoCAD</RootNamespace>
+    <Version>1.2.0</Version>
+    <Company>BURAK BIM</Company>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateTargetPlatformAttribute>false</GenerateTargetPlatformAttribute>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <NoWarn>CS0618;CS0219;MSB3277;NU1701</NoWarn>
+    <DefineConstants>$(DefineConstants);ACAD$(AcadYear)</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(UseRoslyn)' == 'true'">
+    <DefineConstants>$(DefineConstants);BURAK_ROSLYN</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="accoremgd"><HintPath>$(AcadDir)\accoremgd.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="acdbmgd"><HintPath>$(AcadDir)\acdbmgd.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="acmgd"><HintPath>$(AcadDir)\acmgd.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="System.Xaml" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" Condition="'$(FrameworkPathOverride)' == ''" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseRoslyn)' == 'true'">
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+    <Compile Include="..\BurakBim.Bridge.Core\*.cs" Link="Core\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

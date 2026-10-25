@@ -1,0 +1,70 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build server (single-file, self-contained)
+        run: dotnet publish src/BurakBim.Server/BurakBim.Server.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:DebugType=none -o out/server
+
+      - name: Self-test (scan-to-BIM algorithms)
+        run: out/server/BurakBim.Server.exe --selftest
+
+      - name: MCP smoke test
+        shell: pwsh
+        run: |
+          $req = @(
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","clientInfo":{"name":"ci","version":"1"}}}',
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+          ) -join "`n"
+          $out = $req | out/server/BurakBim.Server.exe
+          if (-not ($out -match '"serverInfo"')) { throw "initialize failed" }
+          Write-Host $out.Substring(0, [Math]::Min(400, $out.Length))
+
+      # Revit bridges compile against Nice3point reference packages (no Revit needed on the runner).
+      - name: Compile-check Revit bridges 2022-2027
+        shell: pwsh
+        run: |
+          $versions = @{ 2022='2022.1.80'; 2023='2023.1.80'; 2024='2024.2.0'; 2025='2025.1.0'; 2026='2026.1.0'; 2027='2027.0.10' }
+          foreach ($y in $versions.Keys | Sort-Object) {
+            $ref = "refs/revit$y"
+            dotnet new classlib -o $ref --force | Out-Null
+            dotnet add $ref package Nice3point.Revit.Api.RevitAPI --version $versions[$y] | Out-Null
+            dotnet add $ref package Nice3point.Revit.Api.RevitAPIUI --version $versions[$y] | Out-Null
+            dotnet restore $ref | Out-Null
+            $dll = Get-ChildItem "$env:USERPROFILE/.nuget/packages/nice3point.revit.api.revitapi/$($versions[$y])" -Recurse -Filter RevitAPI.dll | Select-Object -First 1
+            $dir = Join-Path $PWD "refs/revit$y-dlls"; New-Item -ItemType Directory -Force $dir | Out-Null
+            Copy-Item $dll.FullName $dir
+            $ui = Get-ChildItem "$env:USERPROFILE/.nuget/packages/nice3point.revit.api.revitapiui/$($versions[$y])" -Recurse -Filter RevitAPIUI.dll | Select-Object -First 1
+            Copy-Item $ui.FullName $dir
+            dotnet build src/BurakBim.Bridge.Revit/BurakBim.Bridge.Revit.csproj -c Release -p:RevitYear=$y -p:RevitDir=$dir -o out/bridges/revit/$y
+            if ($LASTEXITCODE -ne 0) { throw "Revit $y bridge failed" }
+          }
+
+      - name: Package ZIP + Setup.exe
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          ./build/build-release.ps1 -NoBuild -Makensis "C:\Program Files (x86)\NSIS\makensis.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BURAK-BIM
+          path: dist/*
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

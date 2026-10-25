@@ -1,0 +1,6455 @@
+{
+"source": "Graphisoft Archicad JSON API (archicad PyPI package, AC24-AC30)",
+"commands": [
+{
+"name": "CloneProjectMapItemToViewMap",
+"since": 24,
+"command": "API.CloneProjectMapItemToViewMap",
+"description": "Clones a project map item to the view map.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"projectMapNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"parentNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+}
+},
+"required": [
+"projectMapNavigatorItemId",
+"parentNavigatorItemId"
+]
+}
+},
+{
+"name": "CreateAttributeFolders",
+"since": 26,
+"command": "API.CreateAttributeFolders",
+"description": "Creates attribute folders. To create a folder, its full path has to be provided. The command will create all folders along the path, if they do not exist.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeFolders": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeFolderCreationParameters"
+},
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"attributeFolders"
+]
+}
+},
+{
+"name": "CreateLayout",
+"since": 24,
+"command": "API.CreateLayout",
+"description": "Creates a new layout.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"layoutName": {
+"type": "string",
+"description": "The name of the layout.",
+"minLength": 1
+},
+"layoutParameters": {
+"$ref": "#/LayoutParameters",
+"description": "The parameters of the layout."
+},
+"masterNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"parentNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+}
+},
+"required": [
+"layoutName",
+"layoutParameters",
+"masterNavigatorItemId",
+"parentNavigatorItemId"
+]
+}
+},
+{
+"name": "CreateLayoutSubset",
+"since": 24,
+"command": "API.CreateLayoutSubset",
+"description": "Creates a new layout subset.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"subsetParameters": {
+"$ref": "#/Subset",
+"description": "A set of options used to assign IDs to the layouts contained in the subset."
+},
+"parentNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+}
+},
+"required": [
+"subsetParameters",
+"parentNavigatorItemId"
+]
+}
+},
+{
+"name": "CreateViewMapFolder",
+"since": 24,
+"command": "API.CreateViewMapFolder",
+"description": "Creates a view folder item at the given position in the navigator tree.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"folderParameters": {
+"$ref": "#/FolderParameters",
+"description": "The parameters of a folder."
+},
+"parentNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"previousNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+}
+},
+"required": [
+"folderParameters"
+]
+}
+},
+{
+"name": "DeleteAttributeFolders",
+"since": 26,
+"command": "API.DeleteAttributeFolders",
+"description": "Deletes attribute folders and all the deletable attributes and folders it contains. To delete a folder, its identifier has to be provided.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeFolderIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeFolderIdWrapperItem"
+},
+"description": "A list of attribute folder identifiers."
+}
+},
+"required": [
+"attributeFolderIds"
+]
+}
+},
+{
+"name": "DeleteAttributes",
+"since": 26,
+"command": "API.DeleteAttributes",
+"description": "Deletes attributes.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "DeleteNavigatorItems",
+"since": 24,
+"command": "API.DeleteNavigatorItems",
+"description": "Deletes items from navigator tree.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemIdWrapper"
+},
+"description": "A list of navigator item identifiers."
+}
+},
+"required": [
+"navigatorItemIds"
+]
+}
+},
+{
+"name": "ExecuteAddOnCommand",
+"since": 25,
+"command": "API.ExecuteAddOnCommand",
+"description": "Executes a command registered in an Add-On.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"addOnCommandId": {
+"$ref": "#/AddOnCommandId",
+"description": "The identifier of an Add-On command."
+},
+"addOnCommandParameters": {
+"$ref": "#/AddOnCommandParameters",
+"description": "The input parameters of an Add-On command."
+}
+},
+"required": [
+"addOnCommandId"
+]
+}
+},
+{
+"name": "Get2DBoundingBoxes",
+"since": 24,
+"command": "API.Get2DBoundingBoxes",
+"description": "Get the 2D bounding box of elements identified by their GUIDs. The bounding box is calculated from the global origin on the floor plan view. The output is the array of the bounding boxes respective to the input GUIDs. Only works for elements detailed in <i>Element Information</i>.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elements": {
+"type": "array",
+"items": {
+"$ref": "#/ElementIdArrayItem"
+},
+"description": "A list of elements."
+}
+},
+"required": [
+"elements"
+]
+}
+},
+{
+"name": "Get3DBoundingBoxes",
+"since": 24,
+"command": "API.Get3DBoundingBoxes",
+"description": "Get the 3D bounding box of elements identified by their GUIDs. The bounding box is calculated from the global origin in the 3D view. The output is the array of the bounding boxes respective to the input GUIDs. Only works for elements detailed in <i>Element Information</i>.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elements": {
+"type": "array",
+"items": {
+"$ref": "#/ElementIdArrayItem"
+},
+"description": "A list of elements."
+}
+},
+"required": [
+"elements"
+]
+}
+},
+{
+"name": "GetActivePenTables",
+"since": 25,
+"command": "API.GetActivePenTables",
+"description": "Returns the model view and layout book pen table identifiers.",
+"inputScheme": {
+"type": "object",
+"properties": {},
+"required": []
+}
+},
+{
+"name": "GetAllClassificationSystems",
+"since": 24,
+"command": "API.GetAllClassificationSystems",
+"description": "Returns the list of available classification systems.",
+"inputScheme": {
+"type": "object",
+"properties": {},
+"required": []
+}
+},
+{
+"name": "GetAllClassificationsInSystem",
+"since": 24,
+"command": "API.GetAllClassificationsInSystem",
+"description": "Returns the tree of classifications in the given classification system.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"classificationSystemId": {
+"$ref": "#/ClassificationSystemId",
+"description": "The identifier of a classification system."
+}
+},
+"required": [
+"classificationSystemId"
+]
+}
+},
+{
+"name": "GetAllElements",
+"since": 24,
+"command": "API.GetAllElements",
+"description": "Returns the identifier of every element in the current plan.",
+"inputScheme": {
+"type": "object",
+"properties": {},
+"required": []
+}
+},
+{
+"name": "GetAllPropertyGroupIds",
+"since": 26,
+"command": "API.GetAllPropertyGroupIds",
+"description": "Returns the identifier of every property group in the current plan. The optional propertyType parameter can be used to filter the results based on the type of the property group (Built-in or User Defined).",
+"inputScheme": {
+"type": "object",
+"properties": {
+"propertyType": {
+"type": "string",
+"description": "The type of a property group or a property definition.",
+"enum": [
+"UserDefined",
+"BuiltIn"
+]
+}
+},
+"required": []
+}
+},
+{
+"name": "GetAllPropertyIds",
+"since": 26,
+"command": "API.GetAllPropertyIds",
+"description": "Returns the identifier of every property in the current plan. The optional propertyType parameter can be used to filter the results based on the type of the property (Built-in or User Defined).",
+"inputScheme": {
+"type": "object",
+"properties": {
+"propertyType": {
+"type": "string",
+"description": "The type of a property group or a property definition.",
+"enum": [
+"UserDefined",
+"BuiltIn"
+]
+}
+},
+"required": []
+}
+},
+{
+"name": "GetAllPropertyIdsOfElements",
+"since": 26,
+"command": "API.GetAllPropertyIdsOfElements",
+"description": "Returns all property identifiers of the given elements. The optional propertyType parameter can be used to filter the results based on the type of the property (Built-in or User Defined).",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elements": {
+"type": "array",
+"items": {
+"$ref": "#/ElementIdArrayItem"
+},
+"description": "A list of elements."
+},
+"propertyType": {
+"type": "string",
+"description": "The type of a property group or a property definition.",
+"enum": [
+"UserDefined",
+"BuiltIn"
+]
+}
+},
+"required": [
+"elements"
+]
+}
+},
+{
+"name": "GetAllPropertyNames",
+"since": 24,
+"command": "API.GetAllPropertyNames",
+"description": "Returns the human-readable names of available Property definitions for debug and development purposes.",
+"inputScheme": {
+"type": "object",
+"properties": {},
+"required": []
+}
+},
+{
+"name": "GetAttributeFolder",
+"since": 26,
+"command": "API.GetAttributeFolder",
+"description": "Get an attribute folder's path and guid. To get an attribute folder guid, it's full path has to be provided and to get full path, it's guid has to be provided.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeFolder": {
+"$ref": "#/AttributeFolder",
+"description": "Identifies an attribute folder. The path of the root folder is repesented by empty array."
+}
+},
+"required": [
+"attributeFolder"
+]
+}
+},
+{
+"name": "GetAttributeFolderContent",
+"since": 26,
+"command": "API.GetAttributeFolderContent",
+"description": "Get attribute folder's content, subfolders and attributes. To get an attribute folder's content, it's full path or guid has to be provided.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeFolder": {
+"$ref": "#/AttributeFolder",
+"description": "Identifies an attribute folder. The path of the root folder is repesented by empty array."
+}
+},
+"required": [
+"attributeFolder"
+]
+}
+},
+{
+"name": "GetAttributeFolderStructure",
+"since": 27,
+"command": "API.GetAttributeFolderStructure",
+"description": "Returns the detailed folder structure for the attributes of a given type. If the path is not given, the root folder will be returned",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeType": {
+"type": "string",
+"description": "The type of an attribute.",
+"enum": [
+"BuildingMaterial",
+"Composite",
+"Fill",
+"Layer",
+"LayerCombination",
+"Line",
+"PenTable",
+"Profile",
+"Surface",
+"ZoneCategory",
+"MEPSystem",
+"OperationProfile"
+]
+},
+"path": {
+"type": "array",
+"items": {
+"type": "string",
+"minLength": 1
+},
+"description": "A list of attribute folder names. May be empty."
+}
+},
+"required": [
+"attributeType"
+]
+}
+},
+{
+"name": "GetAttributeFolders",
+"since": 27,
+"command": "API.GetAttributeFolders",
+"description": "Returns the detailed attribute folders identified by their Ids.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeFolderIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeFolderIdWrapperItem"
+},
+"description": "A list of attribute folder identifiers."
+}
+},
+"required": [
+"attributeFolderIds"
+]
+}
+},
+{
+"name": "GetAttributesByType",
+"since": 25,
+"command": "API.GetAttributesByType",
+"description": "Returns the identifier of every attribute of the given type.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeType": {
+"type": "string",
+"description": "The type of an attribute.",
+"enum": [
+"BuildingMaterial",
+"Composite",
+"Fill",
+"Layer",
+"LayerCombination",
+"Line",
+"PenTable",
+"Profile",
+"Surface",
+"ZoneCategory",
+"MEPSystem",
+"OperationProfile"
+]
+}
+},
+"required": [
+"attributeType"
+]
+}
+},
+{
+"name": "GetAttributesCreationInfo",
+"since": 30,
+"command": "API.GetAttributesCreationInfo",
+"description": "Returns the creation information of attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetAttributesIndices",
+"since": 28,
+"command": "API.GetAttributesIndices",
+"description": "Returns the requested indices and guids of attributes.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetBuildingMaterialAttributes",
+"since": 25,
+"command": "API.GetBuildingMaterialAttributes",
+"description": "Returns the detailed building material attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetBuiltInContainerNavigatorItems",
+"since": 26,
+"command": "API.GetBuiltInContainerNavigatorItems",
+"description": "Returns the details of the built-in container navigator items identified by their Ids.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemIdWrapper"
+},
+"description": "A list of navigator item identifiers."
+}
+},
+"required": [
+"navigatorItemIds"
+]
+}
+},
+{
+"name": "GetClassificationItemAvailability",
+"since": 26,
+"command": "API.GetClassificationItemAvailability",
+"description": "Returns the ids of property definitions available for a given classification item.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"classificationItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/ClassificationItemIdArrayItem"
+},
+"description": "A list of classification item identifiers."
+}
+},
+"required": [
+"classificationItemIds"
+]
+}
+},
+{
+"name": "GetClassificationSystemIds",
+"since": 26,
+"command": "API.GetClassificationSystemIds",
+"description": "Returns the list of available classification systems.",
+"inputScheme": {
+"type": "object",
+"properties": {},
+"required": []
+}
+},
+{
+"name": "GetClassificationSystems",
+"since": 26,
+"command": "API.GetClassificationSystems",
+"description": "Returns the details of classification systems identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"classificationSystemIds": {
+"type": "array",
+"items": {
+"$ref": "#/ClassificationSystemIdArrayItem"
+},
+"description": "A list of classification system identifiers."
+}
+},
+"required": [
+"classificationSystemIds"
+]
+}
+},
+{
+"name": "GetClassificationsOfElements",
+"since": 24,
+"command": "API.GetClassificationsOfElements",
+"description": "Returns the classification of the given elements in the given classification systems.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elements": {
+"type": "array",
+"items": {
+"$ref": "#/ElementIdArrayItem"
+},
+"description": "A list of elements."
+},
+"classificationSystemIds": {
+"type": "array",
+"items": {
+"$ref": "#/ClassificationSystemIdArrayItem"
+},
+"description": "A list of classification system identifiers."
+}
+},
+"required": [
+"elements",
+"classificationSystemIds"
+]
+}
+},
+{
+"name": "GetComponentsOfElements",
+"since": 25,
+"command": "API.GetComponentsOfElements",
+"description": "Returns the identifier of every component for a list of elements. The order of the returned list is the same as the given elements.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elements": {
+"type": "array",
+"items": {
+"$ref": "#/ElementIdArrayItem"
+},
+"description": "A list of elements."
+}
+},
+"required": [
+"elements"
+]
+}
+},
+{
+"name": "GetCompositeAttributes",
+"since": 25,
+"command": "API.GetCompositeAttributes",
+"description": "Returns the detailed composite attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetDetailNavigatorItems",
+"since": 26,
+"command": "API.GetDetailNavigatorItems",
+"description": "Returns the details of the detail navigator items identified by their Ids.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemIdWrapper"
+},
+"description": "A list of navigator item identifiers."
+}
+},
+"required": [
+"navigatorItemIds"
+]
+}
+},
+{
+"name": "GetDetailsOfClassificationItems",
+"since": 24,
+"command": "API.GetDetailsOfClassificationItems",
+"description": "Returns the details of classification items.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"classificationItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/ClassificationItemIdArrayItem"
+},
+"description": "A list of classification item identifiers."
+}
+},
+"required": [
+"classificationItemIds"
+]
+}
+},
+{
+"name": "GetDetailsOfProperties",
+"since": 24,
+"command": "API.GetDetailsOfProperties",
+"description": "Returns the details of property definitions.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"properties": {
+"type": "array",
+"items": {
+"$ref": "#/PropertyIdArrayItem"
+},
+"description": "A list of property identifiers."
+}
+},
+"required": [
+"properties"
+]
+}
+},
+{
+"name": "GetDocument3DNavigatorItems",
+"since": 26,
+"command": "API.GetDocument3DNavigatorItems",
+"description": "Returns the details of the 3D document navigator items identified by their Ids.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemIdWrapper"
+},
+"description": "A list of navigator item identifiers."
+}
+},
+"required": [
+"navigatorItemIds"
+]
+}
+},
+{
+"name": "GetElementOwner",
+"since": 30,
+"command": "API.GetElementOwner",
+"description": "Get the owner user of an element identified by its GUID. The response contains the owner user information.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elementId": {
+"$ref": "#/ElementId",
+"description": "The identifier of an element."
+}
+},
+"required": [
+"elementId"
+]
+}
+},
+{
+"name": "GetElementsByClassification",
+"since": 24,
+"command": "API.GetElementsByClassification",
+"description": "Returns the identifier of every element with the given classification identifier.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"classificationItemId": {
+"$ref": "#/ClassificationItemId",
+"description": "The identifier of a classification item."
+}
+},
+"required": [
+"classificationItemId"
+]
+}
+},
+{
+"name": "GetElementsByType",
+"since": 24,
+"command": "API.GetElementsByType",
+"description": "Returns the identifier of every element of the given type on the plan.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elementType": {
+"type": "string",
+"description": "The type of an element.",
+"enum": [
+"All",
+"Wall",
+"Column",
+"Beam",
+"Window",
+"Door",
+"Object",
+"Lamp",
+"Slab",
+"Roof",
+"Mesh",
+"Zone",
+"CurtainWall",
+"Shell",
+"Skylight",
+"Morph",
+"Stair",
+"Railing",
+"Opening"
+]
+}
+},
+"required": [
+"elementType"
+]
+}
+},
+{
+"name": "GetElementsRelatedToZones",
+"since": 24,
+"command": "API.GetElementsRelatedToZones",
+"description": "Returns related elements of the given zones. The related elements will be grouped by type. If multiple zones was given, then the order of the returned list is that of the given zones.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"zones": {
+"type": "array",
+"items": {
+"$ref": "#/ElementIdArrayItem"
+},
+"description": "A list of elements."
+},
+"elementTypes": {
+"type": "array",
+"items": {
+"type": "string",
+"enum": [
+"All",
+"Wall",
+"Column",
+"Beam",
+"Window",
+"Door",
+"Object",
+"Lamp",
+"Slab",
+"Roof",
+"Mesh",
+"Zone",
+"CurtainWall",
+"Shell",
+"Skylight",
+"Morph",
+"Stair",
+"Railing",
+"Opening"
+]
+},
+"description": "A list of element types."
+}
+},
+"required": [
+"zones",
+"elementTypes"
+]
+}
+},
+{
+"name": "GetElevationNavigatorItems",
+"since": 26,
+"command": "API.GetElevationNavigatorItems",
+"description": "Returns the detailed elevation navigator items identified by their Ids.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemIdWrapper"
+},
+"description": "A list of navigator item identifiers."
+}
+},
+"required": [
+"navigatorItemIds"
+]
+}
+},
+{
+"name": "GetFillAttributes",
+"since": 25,
+"command": "API.GetFillAttributes",
+"description": "Returns the detailed fill attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetInteriorElevationNavigatorItems",
+"since": 26,
+"command": "API.GetInteriorElevationNavigatorItems",
+"description": "Returns the details of the interior elevation navigator items identified by their Ids.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemIdWrapper"
+},
+"description": "A list of navigator item identifiers."
+}
+},
+"required": [
+"navigatorItemIds"
+]
+}
+},
+{
+"name": "GetLayerAttributes",
+"since": 25,
+"command": "API.GetLayerAttributes",
+"description": "Returns the detailed layer attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetLayerCombinationAttributes",
+"since": 25,
+"command": "API.GetLayerCombinationAttributes",
+"description": "Returns the detailed layer combination attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetLayoutSettings",
+"since": 24,
+"command": "API.GetLayoutSettings",
+"description": "Returns the parameters (settings) of the given layout.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"layoutNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+}
+},
+"required": [
+"layoutNavigatorItemId"
+]
+}
+},
+{
+"name": "GetLineAttributes",
+"since": 25,
+"command": "API.GetLineAttributes",
+"description": "Returns the detailed line attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetMEPSystemAttributes",
+"since": 30,
+"command": "API.GetMEPSystemAttributes",
+"description": "Returns the detailed MEP system attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetNavigatorItemTree",
+"since": 24,
+"command": "API.GetNavigatorItemTree",
+"description": "Returns the tree of navigator items.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorTreeId": {
+"$ref": "#/NavigatorTreeId",
+"description": "The identifier of a navigator item tree."
+}
+},
+"required": [
+"navigatorTreeId"
+]
+}
+},
+{
+"name": "GetNavigatorItemsType",
+"since": 26,
+"command": "API.GetNavigatorItemsType",
+"description": "Returns all navigator item types based on the navigator item identifiers given. An error is returned for each identifier that is not found.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemIdWrapper"
+},
+"description": "A list of navigator item identifiers."
+}
+},
+"required": [
+"navigatorItemIds"
+]
+}
+},
+{
+"name": "GetOperationProfileAttributes",
+"since": 30,
+"command": "API.GetOperationProfileAttributes",
+"description": "Returns the detailed operation profile attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetPenTableAttributes",
+"since": 25,
+"command": "API.GetPenTableAttributes",
+"description": "Returns the detailed pen table attributes (including their pens) identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetProductInfo",
+"since": 24,
+"command": "API.GetProductInfo",
+"description": "Accesses the version information from the running Archicad.",
+"inputScheme": {
+"type": "object",
+"properties": {},
+"required": []
+}
+},
+{
+"name": "GetProfileAttributePreview",
+"since": 25,
+"command": "API.GetProfileAttributePreview",
+"description": "Returns the preview image of each requested profile attribute in a base64 string format.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+},
+"imageWidth": {
+"type": "integer",
+"description": "The width of the preview image."
+},
+"imageHeight": {
+"type": "integer",
+"description": "The height of the preview image."
+},
+"backgroundColor": {
+"$ref": "#/RGBColor",
+"description": "A color model represented via its red, green and blue components."
+}
+},
+"required": [
+"attributeIds",
+"imageWidth",
+"imageHeight"
+]
+}
+},
+{
+"name": "GetProfileAttributes",
+"since": 25,
+"command": "API.GetProfileAttributes",
+"description": "Returns the detailed profile attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetPropertyDefinitionAvailability",
+"since": 26,
+"command": "API.GetPropertyDefinitionAvailability",
+"description": "Returns the ids of classification items a given property definition is available for.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"propertyIds": {
+"type": "array",
+"items": {
+"$ref": "#/PropertyIdArrayItem"
+},
+"description": "A list of property identifiers."
+}
+},
+"required": [
+"propertyIds"
+]
+}
+},
+{
+"name": "GetPropertyGroups",
+"since": 26,
+"command": "API.GetPropertyGroups",
+"description": "Returns the details of property groups.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"propertyGroupIds": {
+"type": "array",
+"items": {
+"$ref": "#/PropertyGroupIdArrayItem"
+},
+"description": "A list of property group identifiers."
+}
+},
+"required": [
+"propertyGroupIds"
+]
+}
+},
+{
+"name": "GetPropertyIds",
+"since": 24,
+"command": "API.GetPropertyIds",
+"description": "Returns the identifiers of property definitions for the requested property names.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"properties": {
+"type": "array",
+"items": {
+"$ref": "#/PropertyUserId"
+},
+"description": "A list of PropertyUserId objects."
+}
+},
+"required": [
+"properties"
+]
+}
+},
+{
+"name": "GetPropertyValuesOfElementComponents",
+"since": 25,
+"command": "API.GetPropertyValuesOfElementComponents",
+"description": "Returns the property values of the components for the given property.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elementComponents": {
+"type": "array",
+"items": {
+"$ref": "#/ElementComponentIdArrayItem"
+},
+"description": "List of components of elements."
+},
+"properties": {
+"type": "array",
+"items": {
+"$ref": "#/PropertyIdArrayItem"
+},
+"description": "A list of property identifiers."
+}
+},
+"required": [
+"elementComponents",
+"properties"
+]
+}
+},
+{
+"name": "GetPropertyValuesOfElements",
+"since": 24,
+"command": "API.GetPropertyValuesOfElements",
+"description": "Returns the property values of the elements for the given property.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elements": {
+"type": "array",
+"items": {
+"$ref": "#/ElementIdArrayItem"
+},
+"description": "A list of elements."
+},
+"properties": {
+"type": "array",
+"items": {
+"$ref": "#/PropertyIdArrayItem"
+},
+"description": "A list of property identifiers."
+},
+"onlySupportedTypes": {
+"type": "boolean",
+"description": "Optional parameter. When it is set to true, only elements with types that are supported by any other JSON API command will be returned."
+}
+},
+"required": [
+"elements",
+"properties"
+]
+}
+},
+{
+"name": "GetPublisherSetNames",
+"since": 24,
+"command": "API.GetPublisherSetNames",
+"description": "Returns the names of available publisher sets.",
+"inputScheme": {
+"type": "object",
+"properties": {},
+"required": []
+}
+},
+{
+"name": "GetSectionNavigatorItems",
+"since": 26,
+"command": "API.GetSectionNavigatorItems",
+"description": "Returns the details of the section navigator items identified by their Ids.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemIdWrapper"
+},
+"description": "A list of navigator item identifiers."
+}
+},
+"required": [
+"navigatorItemIds"
+]
+}
+},
+{
+"name": "GetSelectedElements",
+"since": 26,
+"command": "API.GetSelectedElements",
+"description": "Returns the identifiers of selected elements in the current plan.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"onlyEditable": {
+"type": "boolean",
+"description": "Optional parameter that defines whether the selection list should include only the editable elements or all of them. The default value is FALSE"
+},
+"onlySupportedTypes": {
+"type": "boolean",
+"description": "Optional parameter. When it is set to true, only elements with types that are supported by any other JSON API command will be returned."
+}
+},
+"required": []
+}
+},
+{
+"name": "GetStoryNavigatorItems",
+"since": 26,
+"command": "API.GetStoryNavigatorItems",
+"description": "Returns the details of the story navigator items identified by their Ids.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemIdWrapper"
+},
+"description": "A list of navigator item identifiers."
+}
+},
+"required": [
+"navigatorItemIds"
+]
+}
+},
+{
+"name": "GetSurfaceAttributes",
+"since": 25,
+"command": "API.GetSurfaceAttributes",
+"description": "Returns the detailed surface attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "GetTypesOfElements",
+"since": 26,
+"command": "API.GetTypesOfElements",
+"description": "Returns the types of the given elements.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elements": {
+"type": "array",
+"items": {
+"$ref": "#/ElementIdArrayItem"
+},
+"description": "A list of elements."
+}
+},
+"required": [
+"elements"
+]
+}
+},
+{
+"name": "GetWorksheetNavigatorItems",
+"since": 26,
+"command": "API.GetWorksheetNavigatorItems",
+"description": "Returns the details of the worksheet navigator items identified by their Ids.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemIds": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemIdWrapper"
+},
+"description": "A list of navigator item identifiers."
+}
+},
+"required": [
+"navigatorItemIds"
+]
+}
+},
+{
+"name": "GetZoneCategoryAttributes",
+"since": 25,
+"command": "API.GetZoneCategoryAttributes",
+"description": "Returns the detailed zone category attributes identified by their GUIDs.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeIds"
+]
+}
+},
+{
+"name": "IsAddOnCommandAvailable",
+"since": 25,
+"command": "API.IsAddOnCommandAvailable",
+"description": "Checks if the command is available or not.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"addOnCommandId": {
+"$ref": "#/AddOnCommandId",
+"description": "The identifier of an Add-On command."
+}
+},
+"required": [
+"addOnCommandId"
+]
+}
+},
+{
+"name": "IsAlive",
+"since": 24,
+"command": "API.IsAlive",
+"description": "Checks if the Archicad connection is alive.",
+"inputScheme": {
+"type": "object",
+"properties": {},
+"required": []
+}
+},
+{
+"name": "MoveAttributesAndFolders",
+"since": 26,
+"command": "API.MoveAttributesAndFolders",
+"description": "Moves attributes and attribute folders.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeFolderIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeFolderIdWrapperItem"
+},
+"description": "A list of attribute folder identifiers."
+},
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+},
+"targetFolderId": {
+"$ref": "#/AttributeFolderId",
+"description": "The identifier of an attribute folder."
+}
+},
+"required": [
+"attributeFolderIds",
+"attributeIds",
+"targetFolderId"
+]
+}
+},
+{
+"name": "MoveNavigatorItem",
+"since": 24,
+"command": "API.MoveNavigatorItem",
+"description": "Moves the given navigator item under the <i>parentNavigatorItemId</i> in the navigator tree. If <i>previousNavigatorItemId</i> is not given then inserts it at the first place under the new parent. If it is given then inserts it after this navigator item.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemIdToMove": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"parentNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"previousNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+}
+},
+"required": [
+"navigatorItemIdToMove",
+"parentNavigatorItemId"
+]
+}
+},
+{
+"name": "RenameAttributeFolder",
+"since": 26,
+"command": "API.RenameAttributeFolder",
+"description": "Rename attribute folder.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeFolder": {
+"$ref": "#/AttributeFolder",
+"description": "Identifies an attribute folder. The path of the root folder is repesented by empty array."
+},
+"newName": {
+"type": "string",
+"description": "The requested new name of the attribute folder.",
+"minLength": 1
+}
+},
+"required": [
+"attributeFolder",
+"newName"
+]
+}
+},
+{
+"name": "RenameAttributeFolders",
+"since": 27,
+"command": "API.RenameAttributeFolders",
+"description": "Rename attribute folder.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"attributeFolderParametersList": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeFolderRenameParameters"
+},
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"attributeFolderParametersList"
+]
+}
+},
+{
+"name": "RenameNavigatorItem",
+"since": 24,
+"command": "API.RenameNavigatorItem",
+"description": "Renames an existing navigator item by specifying either the name or the ID, or both.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"newName": {
+"type": "string",
+"description": "New name of the navigator item."
+},
+"newId": {
+"type": "string",
+"description": "New ID of the navigator item."
+}
+},
+"required": [
+"navigatorItemId"
+]
+}
+},
+{
+"name": "SetClassificationsOfElements",
+"since": 24,
+"command": "API.SetClassificationsOfElements",
+"description": "Sets the classifications of elements. In order to set the classification of an element to unclassified, omit the classificationItemId field.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elementClassifications": {
+"type": "array",
+"items": {
+"$ref": "#/ElementClassification"
+},
+"description": "A list of element classification identifiers."
+}
+},
+"required": [
+"elementClassifications"
+]
+}
+},
+{
+"name": "SetLayoutSettings",
+"since": 24,
+"command": "API.SetLayoutSettings",
+"description": "Sets the parameters (settings) of the given layout.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"layoutParameters": {
+"$ref": "#/LayoutParameters",
+"description": "The parameters of the layout."
+},
+"layoutNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+}
+},
+"required": [
+"layoutParameters",
+"layoutNavigatorItemId"
+]
+}
+},
+{
+"name": "SetPropertyValuesOfElements",
+"since": 24,
+"command": "API.SetPropertyValuesOfElements",
+"description": "Sets the property values of elements.",
+"inputScheme": {
+"type": "object",
+"properties": {
+"elementPropertyValues": {
+"type": "array",
+"items": {
+"$ref": "#/ElementPropertyValue"
+},
+"description": "A list of element property values."
+}
+},
+"required": [
+"elementPropertyValues"
+]
+}
+}
+],
+"definitions": {
+"ClassificationSystemId": {
+"type": "object",
+"description": "The identifier of a classification system.",
+"properties": {
+"guid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+}
+},
+"required": [
+"guid"
+]
+},
+"ClassificationSystemIdArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"classificationSystemId": {
+"$ref": "#/ClassificationSystemId",
+"description": "The identifier of a classification system."
+}
+},
+"required": [
+"classificationSystemId"
+]
+},
+"ClassificationItemId": {
+"type": "object",
+"description": "The identifier of a classification item.",
+"properties": {
+"guid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+}
+},
+"required": [
+"guid"
+]
+},
+"ClassificationItemIdArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"classificationItemId": {
+"$ref": "#/ClassificationItemId",
+"description": "The identifier of a classification item."
+}
+},
+"required": [
+"classificationItemId"
+]
+},
+"ClassificationId": {
+"type": "object",
+"description": "The element classification identifier.",
+"properties": {
+"classificationSystemId": {
+"$ref": "#/ClassificationSystemId",
+"description": "The identifier of a classification system."
+},
+"classificationItemId": {
+"$ref": "#/ClassificationItemId",
+"description": "The identifier of a classification item."
+}
+},
+"required": [
+"classificationSystemId"
+]
+},
+"ClassificationItemDetails": {
+"type": "object",
+"description": "The details of a classification item.",
+"properties": {
+"classificationItemId": {
+"$ref": "#/ClassificationItemId",
+"description": "The identifier of a classification item."
+},
+"id": {
+"type": "string",
+"description": "The unique identifier of the classification item as specified by the user."
+},
+"name": {
+"type": "string",
+"description": "The display name of the classification item."
+},
+"description": {
+"type": "string",
+"description": "The description of the classification item."
+}
+},
+"required": [
+"classificationItemId",
+"id",
+"name",
+"description"
+]
+},
+"ClassificationSystem": {
+"type": "object",
+"description": "The details of a classification system.",
+"properties": {
+"classificationSystemId": {
+"$ref": "#/ClassificationSystemId",
+"description": "The identifier of a classification system."
+},
+"name": {
+"type": "string",
+"description": "The display name of the classification system."
+},
+"description": {
+"type": "string",
+"description": "The description of the classification system."
+},
+"source": {
+"type": "string",
+"description": "The source of the classification system (e.g. URL to a classification system standard)."
+},
+"version": {
+"type": "string",
+"description": "The version of the classification system."
+},
+"date": {
+"type": "string",
+"description": "A date in its string representation as defined in ISO 8601: YYYY-MM-DD."
+}
+},
+"required": [
+"classificationSystemId",
+"name",
+"description",
+"source",
+"version",
+"date"
+]
+},
+"UserDefinedPropertyUserId": {
+"type": "object",
+"description": "The unique identifier of a User-Defined Property, identified by its name.",
+"properties": {
+"localizedName": {
+"type": "array",
+"items": {
+"type": "string"
+},
+"minItems": 2,
+"maxItems": 2,
+"description": "A two-element list of the localized name parts. The first element is the name of the group the property belongs to, and the second element is the actual name of the property."
+},
+"type": {
+"type": "string",
+"enum": [
+"UserDefined"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"localizedName"
+]
+},
+"BuiltInPropertyUserId": {
+"type": "object",
+"description": "The unique identifier of a Built-In Property, identified by its name.",
+"properties": {
+"nonLocalizedName": {
+"type": "string",
+"description": "The non-localized name of the Built-In Property."
+},
+"type": {
+"type": "string",
+"enum": [
+"BuiltIn"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"nonLocalizedName"
+]
+},
+"PropertyUserId": {
+"oneOf": [
+{
+"$ref": "#/UserDefinedPropertyUserId"
+},
+{
+"$ref": "#/BuiltInPropertyUserId"
+}
+],
+"description": "The unique identifier of a Property, identified by its name. May represent a User-Defined or a Built-In Property."
+},
+"PropertyId": {
+"type": "object",
+"description": "The identifier of a property.",
+"properties": {
+"guid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+}
+},
+"required": [
+"guid"
+]
+},
+"PropertyIdArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"propertyId": {
+"$ref": "#/PropertyId",
+"description": "The identifier of a property."
+}
+},
+"required": [
+"propertyId"
+]
+},
+"PropertyGroup": {
+"type": "object",
+"description": "A property group.",
+"properties": {
+"propertyGroupId": {
+"$ref": "#/PropertyGroupId",
+"description": "The identifier of a property group."
+},
+"name": {
+"type": "string",
+"description": "The property group name."
+}
+},
+"required": [
+"propertyGroupId",
+"name"
+]
+},
+"NormalNumberPropertyValue": {
+"type": "object",
+"description": "A number property value containing a valid numeric value.",
+"properties": {
+"value": {
+"type": "number",
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"number"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalIntegerPropertyValue": {
+"type": "object",
+"description": "An integer property value containing a valid integer number.",
+"properties": {
+"value": {
+"type": "integer",
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"integer"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalStringPropertyValue": {
+"type": "object",
+"description": "A string property value containing a valid string.",
+"properties": {
+"value": {
+"type": "string",
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"string"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalBooleanPropertyValue": {
+"type": "object",
+"description": "A boolean property value containing a valid boolean value.",
+"properties": {
+"value": {
+"type": "boolean",
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"boolean"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalLengthPropertyValue": {
+"type": "object",
+"description": "A length property value containing a real length value. The value is measured in SI (meters).",
+"properties": {
+"value": {
+"type": "number",
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"length"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalAreaPropertyValue": {
+"type": "object",
+"description": "An area property value containing a real area. The value is measured in SI (square meters).",
+"properties": {
+"value": {
+"type": "number",
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"area"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalVolumePropertyValue": {
+"type": "object",
+"description": "A volume property value containing a real volume. The value is measured in SI (cubic meters).",
+"properties": {
+"value": {
+"type": "number",
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"volume"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalAnglePropertyValue": {
+"type": "object",
+"description": "An angle property value containing a real angle. The value is measured in SI (radians).",
+"properties": {
+"value": {
+"type": "number",
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"angle"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalNumberListPropertyValue": {
+"type": "object",
+"description": "A number list property value containing numbers in an array.",
+"properties": {
+"value": {
+"type": "array",
+"items": {
+"type": "number"
+},
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"numberList"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalIntegerListPropertyValue": {
+"type": "object",
+"description": "An integer list property value containing integers in an array.",
+"properties": {
+"value": {
+"type": "array",
+"items": {
+"type": "integer"
+},
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"integerList"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalStringListPropertyValue": {
+"type": "object",
+"description": "A string list property value containing strings in an array.",
+"properties": {
+"value": {
+"type": "array",
+"items": {
+"type": "string"
+},
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"stringList"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalBooleanListPropertyValue": {
+"type": "object",
+"description": "A boolean list property value containing boolean values in an array.",
+"properties": {
+"value": {
+"type": "array",
+"items": {
+"type": "boolean"
+},
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"booleanList"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalLengthListPropertyValue": {
+"type": "object",
+"description": "A length list property value containing length values in an array. The values are measured in SI (meters).",
+"properties": {
+"value": {
+"type": "array",
+"items": {
+"type": "number"
+},
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"lengthList"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalAreaListPropertyValue": {
+"type": "object",
+"description": "An area list property value containing areas in an array. The values are measured in SI (square meters).",
+"properties": {
+"value": {
+"type": "array",
+"items": {
+"type": "number"
+},
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"areaList"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalVolumeListPropertyValue": {
+"type": "object",
+"description": "A volume list property value containing volumes in an array. The values are measured in SI (cubic meters).",
+"properties": {
+"value": {
+"type": "array",
+"items": {
+"type": "number"
+},
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"volumeList"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalAngleListPropertyValue": {
+"type": "object",
+"description": "An angle list property value containing angles in an array. The values are measured in SI (radians).",
+"properties": {
+"value": {
+"type": "array",
+"items": {
+"type": "number"
+},
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"angleList"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"UserUndefinedPropertyValue": {
+"type": "object",
+"description": "A userUndefined value means that there is no actual number/string/etc. value, but the user deliberately set an Undefined value: this is a valid value, too.",
+"properties": {
+"type": {
+"type": "string",
+"enum": [
+"number",
+"integer",
+"string",
+"boolean",
+"length",
+"area",
+"volume",
+"angle",
+"numberList",
+"integerList",
+"stringList",
+"booleanList",
+"lengthList",
+"areaList",
+"volumeList",
+"angleList",
+"singleEnum",
+"multiEnum"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"userUndefined"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"type"
+]
+},
+"NotAvailablePropertyValue": {
+"type": "object",
+"description": "A notAvailable value means that the property is not available for the property owner (and therefore it has no property value for it).",
+"properties": {
+"type": {
+"type": "string",
+"enum": [
+"number",
+"integer",
+"string",
+"boolean",
+"length",
+"area",
+"volume",
+"angle",
+"numberList",
+"integerList",
+"stringList",
+"booleanList",
+"lengthList",
+"areaList",
+"volumeList",
+"angleList",
+"singleEnum",
+"multiEnum"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"notAvailable"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"type"
+]
+},
+"NotEvaluatedPropertyValue": {
+"type": "object",
+"description": "A notEvaluated value means that the property could not be evaluated for the property owner for some reason.",
+"properties": {
+"type": {
+"type": "string",
+"enum": [
+"number",
+"integer",
+"string",
+"boolean",
+"length",
+"area",
+"volume",
+"angle",
+"numberList",
+"integerList",
+"stringList",
+"booleanList",
+"lengthList",
+"areaList",
+"volumeList",
+"angleList",
+"singleEnum",
+"multiEnum"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"notEvaluated"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"type"
+]
+},
+"DisplayValueEnumId": {
+"type": "object",
+"description": "An enumeration value identifier using the displayed value.",
+"properties": {
+"displayValue": {
+"type": "string",
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"displayValue"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"displayValue"
+]
+},
+"PossibleEnumValue": {
+"type": "object",
+"description": "The description of an enumeration value.",
+"properties": {
+"enumValueId": {
+"$ref": "#/EnumValueId",
+"description": "The identifier of a property enumeration value."
+},
+"displayValue": {
+"type": "string",
+"description": "Displayed value of the enumeration."
+},
+"nonLocalizedValue": {
+"type": "string",
+"description": "Nonlocalized value of the enumeration if there is one."
+}
+},
+"required": [
+"enumValueId",
+"displayValue"
+]
+},
+"PossibleEnumValuesArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"enumValue": {
+"$ref": "#/PossibleEnumValue",
+"description": "The description of an enumeration value."
+}
+},
+"required": [
+"enumValue"
+]
+},
+"Error": {
+"type": "object",
+"description": "The details of an error.",
+"properties": {
+"code": {
+"type": "integer",
+"description": "The code of the error."
+},
+"message": {
+"type": "string",
+"description": "The error message."
+}
+},
+"required": [
+"code",
+"message"
+]
+},
+"ErrorItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"error": {
+"$ref": "#/Error",
+"description": "The details of an error."
+}
+},
+"required": [
+"error"
+]
+},
+"SuccessfulExecutionResult": {
+"type": "object",
+"description": "The result of a successful execution.",
+"properties": {
+"success": {
+"type": "boolean",
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"success"
+]
+},
+"FailedExecutionResult": {
+"type": "object",
+"description": "The result of a failed execution.",
+"properties": {
+"success": {
+"type": "boolean",
+"description": "EMPTY STRING"
+},
+"error": {
+"$ref": "#/Error",
+"description": "The details of an error."
+}
+},
+"required": [
+"success",
+"error"
+]
+},
+"ExecutionResult": {
+"oneOf": [
+{
+"$ref": "#/SuccessfulExecutionResult"
+},
+{
+"$ref": "#/FailedExecutionResult"
+}
+],
+"description": "The result of the execution."
+},
+"ElementId": {
+"type": "object",
+"description": "The identifier of an element.",
+"properties": {
+"guid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+}
+},
+"required": [
+"guid"
+]
+},
+"ElementIdArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"elementId": {
+"$ref": "#/ElementId",
+"description": "The identifier of an element."
+}
+},
+"required": [
+"elementId"
+]
+},
+"ElementsWrapper": {
+"type": "object",
+"description": "A wrapper for a list of elements.",
+"properties": {
+"elements": {
+"type": "array",
+"items": {
+"$ref": "#/ElementIdArrayItem"
+},
+"description": "A list of elements."
+}
+},
+"required": [
+"elements"
+]
+},
+"ElementsOrError": {
+"oneOf": [
+{
+"$ref": "#/ElementsWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A list of elements or an error."
+},
+"NavigatorItemId": {
+"type": "object",
+"description": "The identifier of a navigator item.",
+"properties": {
+"guid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+}
+},
+"required": [
+"guid"
+]
+},
+"PublisherSetId": {
+"type": "object",
+"description": "The identifier of a publisher set.",
+"properties": {
+"name": {
+"type": "string",
+"description": "The name of the publisher set."
+},
+"type": {
+"type": "string",
+"enum": [
+"PublisherSets"
+],
+"description": "The type of the navigator item tree."
+}
+},
+"required": [
+"name"
+]
+},
+"OtherNavigatorTreeId": {
+"type": "object",
+"description": "The identifier of a navigator item tree.",
+"properties": {
+"type": {
+"type": "string",
+"enum": [
+"ProjectMap",
+"ViewMap",
+"MyViewMap",
+"LayoutBook"
+],
+"description": "The type of the navigator item tree."
+}
+},
+"required": [
+"type"
+]
+},
+"FolderParameters": {
+"type": "object",
+"description": "The parameters of a folder.",
+"properties": {
+"name": {
+"type": "string",
+"description": "The name of the folder."
+}
+},
+"required": [
+"name"
+]
+},
+"NavigatorTreeId": {
+"oneOf": [
+{
+"$ref": "#/PublisherSetId"
+},
+{
+"$ref": "#/OtherNavigatorTreeId"
+}
+],
+"description": "The identifier of a navigator item tree."
+},
+"BoundingBox2D": {
+"type": "object",
+"description": "The 2D bounding box of an element.",
+"properties": {
+"xMin": {
+"type": "number",
+"description": "The minimum X value of the bounding box."
+},
+"yMin": {
+"type": "number",
+"description": "The minimum Y value of the bounding box."
+},
+"xMax": {
+"type": "number",
+"description": "The maximum X value of the bounding box."
+},
+"yMax": {
+"type": "number",
+"description": "The maximum Y value of the bounding box."
+}
+},
+"required": [
+"xMin",
+"yMin",
+"xMax",
+"yMax"
+]
+},
+"BoundingBox3D": {
+"type": "object",
+"description": "A 3D bounding box of an element.",
+"properties": {
+"xMin": {
+"type": "number",
+"description": "The minimum X value of the bounding box."
+},
+"yMin": {
+"type": "number",
+"description": "The minimum Y value of the bounding box."
+},
+"zMin": {
+"type": "number",
+"description": "The minimum Z value of the bounding box."
+},
+"xMax": {
+"type": "number",
+"description": "The maximum X value of the bounding box."
+},
+"yMax": {
+"type": "number",
+"description": "The maximum Y value of the bounding box."
+},
+"zMax": {
+"type": "number",
+"description": "The maximum Z value of the bounding box."
+}
+},
+"required": [
+"xMin",
+"yMin",
+"zMin",
+"xMax",
+"yMax",
+"zMax"
+]
+},
+"Subset": {
+"type": "object",
+"description": "A set of options used to assign IDs to the layouts contained in the subset.",
+"properties": {
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name for the layout subset."
+},
+"includeToIDSequence": {
+"type": "boolean",
+"description": "Defines whether this subset is included in automatic ID assignment or not."
+},
+"customNumbering": {
+"type": "boolean",
+"description": "Defines whether the IDs are generated automatically or a custom numbering is used."
+},
+"continueNumbering": {
+"type": "boolean",
+"description": "Defines whether to continue using the ID assignment of the upper levels or not. If 'true', layouts within this subset are going to be assigned IDs as if they were not within this subset, but part of the level above. In this case you only use the Subset as a logical grouping which has no effect on IDs."
+},
+"useUpperPrefix": {
+"type": "boolean",
+"description": "Defines whether to use the prefix and ID of the upper levels or not. If 'true', layouts in this subset will be assigned IDs based on the previous layout in the layout book structure."
+},
+"addOwnPrefix": {
+"type": "boolean",
+"description": "Defines whether to add own prefix to the subset or not."
+},
+"customNumber": {
+"type": "string",
+"description": "The custom subset ID."
+},
+"autoNumber": {
+"type": "string",
+"description": "The automatic subset ID."
+},
+"numberingStyle": {
+"type": "string",
+"enum": [
+"Undefined",
+"abc",
+"ABC",
+"1",
+"01",
+"001",
+"0001",
+"noID"
+],
+"description": "A supported numbering style."
+},
+"startAt": {
+"type": "integer",
+"description": "The starting value of the numbering."
+},
+"ownPrefix": {
+"type": "string",
+"description": "The custom prefix for the subset."
+}
+},
+"required": [
+"name",
+"includeToIDSequence",
+"customNumbering",
+"continueNumbering",
+"useUpperPrefix",
+"addOwnPrefix",
+"customNumber",
+"autoNumber",
+"numberingStyle",
+"startAt",
+"ownPrefix"
+]
+},
+"LayoutParameters": {
+"type": "object",
+"description": "The parameters of the layout.",
+"properties": {
+"horizontalSize": {
+"type": "number",
+"description": "The horizontal size of the layout in millimeters."
+},
+"verticalSize": {
+"type": "number",
+"description": "The vertical size of the layout in millimeters."
+},
+"leftMargin": {
+"type": "number",
+"description": "The layout margin from the left side of the paper."
+},
+"topMargin": {
+"type": "number",
+"description": "The layout margin from the top side of the paper."
+},
+"rightMargin": {
+"type": "number",
+"description": "The layout margin from the right side of the paper."
+},
+"bottomMargin": {
+"type": "number",
+"description": "The layout margin from the bottom side of the paper."
+},
+"customLayoutNumber": {
+"type": "string",
+"description": "The custom ID."
+},
+"customLayoutNumbering": {
+"type": "boolean",
+"description": "Defines whether a unique ID is used for the current layout or not."
+},
+"doNotIncludeInNumbering": {
+"type": "boolean",
+"description": "Defines whether this layout is included in automatic ID assignment or not."
+},
+"displayMasterLayoutBelow": {
+"type": "boolean",
+"description": "Defines whether to display the master layout above or below the layout."
+},
+"layoutPageNumber": {
+"type": "integer",
+"description": "The page number of layout when this layout contains multi-page drawings."
+},
+"actPageIndex": {
+"type": "integer",
+"description": "The actual index of layout inside the multi-page layout."
+},
+"currentRevisionId": {
+"type": "string",
+"description": "The ID of the current document revision of the layout."
+},
+"currentFinalRevisionId": {
+"type": "string",
+"description": "The ID with optional suffix of the current document revision of the layout."
+},
+"hasIssuedRevision": {
+"type": "boolean",
+"description": "Defines whether one or more issued document revisions have already been created for the layout or not."
+},
+"hasActualRevision": {
+"type": "boolean",
+"description": "Defines whether an open document revision exists for the layout or not."
+}
+},
+"required": [
+"horizontalSize",
+"verticalSize",
+"leftMargin",
+"topMargin",
+"rightMargin",
+"bottomMargin",
+"customLayoutNumber",
+"customLayoutNumbering",
+"doNotIncludeInNumbering",
+"displayMasterLayoutBelow",
+"layoutPageNumber",
+"actPageIndex",
+"currentRevisionId",
+"currentFinalRevisionId",
+"hasIssuedRevision",
+"hasActualRevision"
+]
+},
+"ClassificationIdWrapper": {
+"type": "object",
+"description": "Attributes:     classificationId (:obj:`ClassificationId`): The element classification identifier.",
+"properties": {
+"classificationId": {
+"$ref": "#/ClassificationId",
+"description": "The element classification identifier."
+}
+},
+"required": [
+"classificationId"
+]
+},
+"ClassificationItemDetailsWrapper": {
+"type": "object",
+"description": "Attributes:     classificationItem (:obj:`ClassificationItemDetails`): The details of a classification item.",
+"properties": {
+"classificationItem": {
+"$ref": "#/ClassificationItemDetails",
+"description": "The details of a classification item."
+}
+},
+"required": [
+"classificationItem"
+]
+},
+"EnumValueIdWrapper": {
+"type": "object",
+"description": "Attributes:     enumValueId (:obj:`EnumValueId`): The identifier of a property enumeration value.",
+"properties": {
+"enumValueId": {
+"$ref": "#/EnumValueId",
+"description": "The identifier of a property enumeration value."
+}
+},
+"required": [
+"enumValueId"
+]
+},
+"NavigatorItemIdWrapper": {
+"type": "object",
+"description": "Attributes:     navigatorItemId (:obj:`NavigatorItemId`): The identifier of a navigator item.",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+}
+},
+"required": [
+"navigatorItemId"
+]
+},
+"BoundingBox2DWrapper": {
+"type": "object",
+"description": "Attributes:     boundingBox2D (:obj:`BoundingBox2D`): The 2D bounding box of an element.",
+"properties": {
+"boundingBox2D": {
+"$ref": "#/BoundingBox2D",
+"description": "The 2D bounding box of an element."
+}
+},
+"required": [
+"boundingBox2D"
+]
+},
+"BoundingBox3DWrapper": {
+"type": "object",
+"description": "Attributes:     boundingBox3D (:obj:`BoundingBox3D`): A 3D bounding box of an element.",
+"properties": {
+"boundingBox3D": {
+"$ref": "#/BoundingBox3D",
+"description": "A 3D bounding box of an element."
+}
+},
+"required": [
+"boundingBox3D"
+]
+},
+"ClassificationIdOrError": {
+"oneOf": [
+{
+"$ref": "#/ClassificationIdWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A classification identifier or an error."
+},
+"ElementClassification": {
+"type": "object",
+"description": "The classification of an element.",
+"properties": {
+"elementId": {
+"$ref": "#/ElementId",
+"description": "The identifier of an element."
+},
+"classificationId": {
+"$ref": "#/ClassificationId",
+"description": "The element classification identifier."
+}
+},
+"required": [
+"elementId",
+"classificationId"
+]
+},
+"ClassificationItemOrError": {
+"oneOf": [
+{
+"$ref": "#/ClassificationItemDetailsWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A classification item or an error."
+},
+"PropertyIdOrError": {
+"oneOf": [
+{
+"$ref": "#/PropertyIdArrayItem"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A property identifier or an error."
+},
+"PropertyDefinition": {
+"type": "object",
+"description": "A property definition. The default value of a property appears if and only if it is a custom property and is not an expression type property. (This may change in the future.)",
+"properties": {
+"group": {
+"$ref": "#/PropertyGroup",
+"description": "A property group."
+},
+"name": {
+"type": "string",
+"description": "The localized name of the property."
+},
+"description": {
+"type": "string",
+"description": "The description of the property."
+},
+"isEditable": {
+"type": "boolean",
+"description": "Defines whether the property is editable or not."
+},
+"type": {
+"type": "string",
+"description": "Defines the type of the property's value."
+},
+"propertyId": {
+"$ref": "#/PropertyId",
+"description": "The identifier of a property."
+},
+"possibleEnumValues": {
+"type": "array",
+"items": {
+"$ref": "#/PossibleEnumValuesArrayItem"
+},
+"description": "A list of enumeration values."
+},
+"defaultValue": {
+"$ref": "#/PropertyDefaultValue",
+"description": "Default value of the property."
+}
+},
+"required": [
+"group",
+"name",
+"description",
+"isEditable",
+"type"
+]
+},
+"NormalSingleEnumPropertyValue": {
+"type": "object",
+"description": "A single enumeration property value containing the ID of the selected enum value.",
+"properties": {
+"value": {
+"$ref": "#/EnumValueId",
+"description": "The identifier of a property enumeration value."
+},
+"type": {
+"type": "string",
+"enum": [
+"singleEnum"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"NormalMultiEnumPropertyValue": {
+"type": "object",
+"description": "A multiple choice enumeration property value containing the IDs of the selected enum values in an array.",
+"properties": {
+"value": {
+"type": "array",
+"items": {
+"$ref": "#/EnumValueIdWrapper"
+},
+"description": "A list of enumeration identifiers."
+},
+"type": {
+"type": "string",
+"enum": [
+"multiEnum"
+],
+"description": "EMPTY STRING"
+},
+"status": {
+"type": "string",
+"enum": [
+"normal"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"value"
+]
+},
+"BoundingBox2DOrError": {
+"oneOf": [
+{
+"$ref": "#/BoundingBox2DWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A 2D bounding box or an error."
+},
+"BoundingBox3DOrError": {
+"oneOf": [
+{
+"$ref": "#/BoundingBox3DWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A 3D bounding box or an error."
+},
+"ClassificationIdsOrErrorsWrapper": {
+"type": "object",
+"description": "Attributes:     classificationIds (:obj:`list` of :obj:`ClassificationIdOrError`): A list of element classification identifiers or errors.",
+"properties": {
+"classificationIds": {
+"type": "array",
+"items": {
+"$ref": "#/ClassificationIdOrError"
+},
+"description": "A list of element classification identifiers or errors."
+}
+},
+"required": [
+"classificationIds"
+]
+},
+"PropertyDefinitionWrapper": {
+"type": "object",
+"description": "Attributes:     propertyDefinition (:obj:`PropertyDefinition`): A property definition. The default value of a property appears if and only if it is a custom property and is not an expression type property. (This may change in the future.)",
+"properties": {
+"propertyDefinition": {
+"$ref": "#/PropertyDefinition",
+"description": "A property definition. The default value of a property appears if and only if it is a custom property and is not an expression type property. (This may change in the future.)"
+}
+},
+"required": [
+"propertyDefinition"
+]
+},
+"ElementClassificationOrError": {
+"oneOf": [
+{
+"$ref": "#/ClassificationIdsOrErrorsWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Element classification identifiers or errors."
+},
+"PropertyDefinitionOrError": {
+"oneOf": [
+{
+"$ref": "#/PropertyDefinitionWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A property definition or an error."
+},
+"ClassificationItemInTree_": {
+"type": "object",
+"description": "",
+"properties": {},
+"required": []
+},
+"ClassificationItemArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"classificationItem": {
+"$ref": "#/ClassificationItemInTree",
+"description": "The details of a classification item."
+}
+},
+"required": [
+"classificationItem"
+]
+},
+"ClassificationItemInTree": {
+"type": "object",
+"description": "The details of a classification item.",
+"properties": {
+"classificationItemId": {
+"$ref": "#/ClassificationItemId",
+"description": "The identifier of a classification item."
+},
+"id": {
+"type": "string",
+"description": "The unique identifier of the classification item as specified by the user."
+},
+"name": {
+"type": "string",
+"description": "The display name of the classification item."
+},
+"description": {
+"type": "string",
+"description": "The description of the classification item."
+},
+"children": {
+"type": "array",
+"items": {
+"$ref": "#/ClassificationItemArrayItem"
+},
+"description": "A list of classification items."
+}
+},
+"required": [
+"classificationItemId",
+"id",
+"name",
+"description"
+]
+},
+"NormalOrUserUndefinedPropertyValue": {
+"oneOf": [
+{
+"$ref": "#/NormalNumberPropertyValue"
+},
+{
+"$ref": "#/NormalIntegerPropertyValue"
+},
+{
+"$ref": "#/NormalStringPropertyValue"
+},
+{
+"$ref": "#/NormalBooleanPropertyValue"
+},
+{
+"$ref": "#/NormalLengthPropertyValue"
+},
+{
+"$ref": "#/NormalAreaPropertyValue"
+},
+{
+"$ref": "#/NormalVolumePropertyValue"
+},
+{
+"$ref": "#/NormalAnglePropertyValue"
+},
+{
+"$ref": "#/NormalNumberListPropertyValue"
+},
+{
+"$ref": "#/NormalIntegerListPropertyValue"
+},
+{
+"$ref": "#/NormalStringListPropertyValue"
+},
+{
+"$ref": "#/NormalBooleanListPropertyValue"
+},
+{
+"$ref": "#/NormalLengthListPropertyValue"
+},
+{
+"$ref": "#/NormalAreaListPropertyValue"
+},
+{
+"$ref": "#/NormalVolumeListPropertyValue"
+},
+{
+"$ref": "#/NormalAngleListPropertyValue"
+},
+{
+"$ref": "#/NormalSingleEnumPropertyValue"
+},
+{
+"$ref": "#/NormalMultiEnumPropertyValue"
+},
+{
+"$ref": "#/UserUndefinedPropertyValue"
+}
+],
+"description": "A normal or a userUndefined property value."
+},
+"ElementPropertyValue": {
+"type": "object",
+"description": "A property value with the identifiers of the property and its owner element.",
+"properties": {
+"elementId": {
+"$ref": "#/ElementId",
+"description": "The identifier of an element."
+},
+"propertyId": {
+"$ref": "#/PropertyId",
+"description": "The identifier of a property."
+},
+"propertyValue": {
+"$ref": "#/NormalOrUserUndefinedPropertyValue",
+"description": "A normal or a userUndefined property value."
+}
+},
+"required": [
+"elementId",
+"propertyId",
+"propertyValue"
+]
+},
+"PropertyValue": {
+"oneOf": [
+{
+"$ref": "#/NormalOrUserUndefinedPropertyValue"
+},
+{
+"$ref": "#/NotAvailablePropertyValue"
+},
+{
+"$ref": "#/NotEvaluatedPropertyValue"
+}
+],
+"description": "A normal, userUndefined, notAvailable or notEvaluated property value."
+},
+"PropertyValueWrapper": {
+"type": "object",
+"description": "Attributes:     propertyValue (:obj:`PropertyValue`): A normal, userUndefined, notAvailable or notEvaluated property value.",
+"properties": {
+"propertyValue": {
+"$ref": "#/PropertyValue",
+"description": "A normal, userUndefined, notAvailable or notEvaluated property value."
+}
+},
+"required": [
+"propertyValue"
+]
+},
+"PropertyValueOrErrorItem": {
+"oneOf": [
+{
+"$ref": "#/PropertyValueWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A property value or an error"
+},
+"PropertyValuesWrapper": {
+"type": "object",
+"description": "Attributes:     propertyValues (:obj:`list` of :obj:`PropertyValueOrErrorItem`): A list of property values.",
+"properties": {
+"propertyValues": {
+"type": "array",
+"items": {
+"$ref": "#/PropertyValueOrErrorItem"
+},
+"description": "A list of property values."
+}
+},
+"required": [
+"propertyValues"
+]
+},
+"PropertyValuesOrErrorForElement": {
+"oneOf": [
+{
+"$ref": "#/PropertyValuesWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains either a list of property values or an error for the element"
+},
+"NavigatorItem_": {
+"type": "object",
+"description": "",
+"properties": {},
+"required": []
+},
+"NavigatorItemArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"navigatorItem": {
+"$ref": "#/NavigatorItem",
+"description": "The details of a navigator item."
+}
+},
+"required": [
+"navigatorItem"
+]
+},
+"NavigatorItem": {
+"type": "object",
+"description": "The details of a navigator item.",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"prefix": {
+"type": "string",
+"description": "The prefix of the navigator item's name."
+},
+"name": {
+"type": "string",
+"description": "The name of the navigator item."
+},
+"type": {
+"type": "string",
+"enum": [
+"UndefinedItem",
+"ProjectMapRootItem",
+"StoryItem",
+"SectionItem",
+"ElevationItem",
+"InteriorElevationItem",
+"WorksheetItem",
+"DetailItem",
+"DocumentFrom3DItem",
+"Perspective3DItem",
+"Axonometry3DItem",
+"CameraSetItem",
+"CameraItem",
+"ScheduleItem",
+"ProjectIndexItem",
+"TextListItem",
+"GraphicListItem",
+"InfoItem",
+"HelpItem",
+"FolderItem",
+"LayoutBookRootItem",
+"SubsetItem",
+"LayoutItem",
+"DrawingItem",
+"MasterFolderItem",
+"MasterLayoutItem"
+],
+"description": "The type of a navigator item. The 'UndefinedItem' type is used when the actual type of the navigator item cannot be retrieved from Archicad."
+},
+"sourceNavigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"children": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemArrayItem"
+},
+"description": "A list of navigator items."
+}
+},
+"required": [
+"navigatorItemId",
+"prefix",
+"name",
+"type"
+]
+},
+"NavigatorTree": {
+"type": "object",
+"description": "A tree of navigator items.",
+"properties": {
+"rootItem": {
+"$ref": "#/NavigatorItem",
+"description": "The details of a navigator item."
+}
+},
+"required": [
+"rootItem"
+]
+},
+"Types": {
+"type": "object",
+"description": "",
+"properties": {},
+"required": []
+},
+"PropertyValuesOrError": {
+"oneOf": [
+{
+"$ref": "#/PropertyValuesWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A list of property values or an error."
+},
+"AddOnCommandId": {
+"type": "object",
+"description": "The identifier of an Add-On command.",
+"properties": {
+"commandNamespace": {
+"type": "string",
+"minLength": 1,
+"description": "The namespace of the Add-On command."
+},
+"commandName": {
+"type": "string",
+"minLength": 1,
+"description": "The name of the Add-On command."
+}
+},
+"required": [
+"commandNamespace",
+"commandName"
+]
+},
+"AddOnCommandIdArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"addOnCommandId": {
+"$ref": "#/AddOnCommandId",
+"description": "The identifier of an Add-On command."
+}
+},
+"required": [
+"addOnCommandId"
+]
+},
+"AddOnCommandParameters": {
+"type": "object",
+"description": "The input parameters of an Add-On command.",
+"properties": {},
+"required": []
+},
+"AddOnCommandResponse": {
+"type": "object",
+"description": "The response returned by an Add-On command.",
+"properties": {},
+"required": []
+},
+"AttributeId": {
+"type": "object",
+"description": "The identifier of an attribute.",
+"properties": {
+"guid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+}
+},
+"required": [
+"guid"
+]
+},
+"AttributeIdWrapperItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+}
+},
+"required": [
+"attributeId"
+]
+},
+"AttributeHeader": {
+"type": "object",
+"description": "The header object of an attribute.",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+}
+},
+"required": [
+"attributeId",
+"name"
+]
+},
+"LayerAttribute": {
+"type": "object",
+"description": "A layer attribute",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"intersectionGroupNr": {
+"type": "integer",
+"description": "The intersection group number"
+},
+"isLocked": {
+"type": "boolean",
+"description": "Defines whether the layer is locked or not."
+},
+"isHidden": {
+"type": "boolean",
+"description": "Defines whether the layer is hidden or not."
+},
+"isWireframe": {
+"type": "boolean",
+"description": "Defines whether the elements placed on this layer are visible as wireframes or a solid model."
+}
+},
+"required": [
+"attributeId",
+"name",
+"intersectionGroupNr",
+"isLocked",
+"isHidden",
+"isWireframe"
+]
+},
+"FillAttribute": {
+"type": "object",
+"description": "A fill attribute.",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"subType": {
+"type": "string",
+"enum": [
+"Vector",
+"Symbol",
+"Solid",
+"Empty",
+"LinearGradient",
+"RadialGradient",
+"Image"
+],
+"description": "The filling type of a fill attribute."
+},
+"pattern": {
+"type": "integer",
+"description": "The pattern of the fill attribute, stored in a 64 bit unsigned integer, and represented as an 8x8 matrix. Each byte in the value is a row, and the bits are the columns of the matrix."
+},
+"appearanceType": {
+"type": "string",
+"enum": [
+"ScaleWithPlan",
+"ScaleIndependent"
+],
+"description": "The appearance type of a line or fill attribute."
+}
+},
+"required": [
+"attributeId",
+"name",
+"subType",
+"pattern",
+"appearanceType"
+]
+},
+"ProfileModifier": {
+"type": "object",
+"description": "A profile modifier parameter.",
+"properties": {
+"name": {
+"type": "string",
+"description": "The name of the modifier."
+},
+"value": {
+"type": "number",
+"description": "The value of the modifier."
+}
+},
+"required": [
+"name",
+"value"
+]
+},
+"ProfileModifierListItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"profileModifier": {
+"$ref": "#/ProfileModifier",
+"description": "A profile modifier parameter."
+}
+},
+"required": [
+"profileModifier"
+]
+},
+"ProfileAttribute": {
+"type": "object",
+"description": "A profile attribute.",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"useWith": {
+"type": "array",
+"items": {
+"type": "string",
+"enum": [
+"All",
+"Wall",
+"Column",
+"Beam",
+"Window",
+"Door",
+"Object",
+"Lamp",
+"Slab",
+"Roof",
+"Mesh",
+"Zone",
+"CurtainWall",
+"Shell",
+"Skylight",
+"Morph",
+"Stair",
+"Railing",
+"Opening"
+]
+},
+"description": "A list of element types."
+},
+"width": {
+"type": "number",
+"description": "The default width (horizontal size) of the profile."
+},
+"height": {
+"type": "number",
+"description": "The default height (vertical size) of the profile."
+},
+"minimumWidth": {
+"type": "number",
+"description": "The minimum width (horizontal size) of the profile."
+},
+"minimumHeight": {
+"type": "number",
+"description": "The minimum height (vertical size) of the profile."
+},
+"widthStretchable": {
+"type": "boolean",
+"description": "Defines whether the profile's width can be increased beyond its default value or not."
+},
+"heightStretchable": {
+"type": "boolean",
+"description": "Defines whether the profile's height can be increased beyond its default value or not."
+},
+"hasCoreSkin": {
+"type": "boolean",
+"description": "Defines whether the profile has a core skin or not."
+},
+"profileModifiers": {
+"type": "array",
+"items": {
+"$ref": "#/ProfileModifierListItem"
+},
+"description": "A list of profile modifiers."
+}
+},
+"required": [
+"attributeId",
+"name",
+"useWith",
+"width",
+"height",
+"minimumWidth",
+"minimumHeight",
+"widthStretchable",
+"heightStretchable",
+"hasCoreSkin",
+"profileModifiers"
+]
+},
+"Texture": {
+"type": "object",
+"description": "A texture",
+"properties": {
+"name": {
+"type": "string",
+"description": "The name of the texture."
+}
+},
+"required": [
+"name"
+]
+},
+"DashItem": {
+"type": "object",
+"description": "A dash item.",
+"properties": {
+"dash": {
+"type": "number",
+"description": "The length of the dash."
+},
+"gap": {
+"type": "number",
+"description": "The length of the gap."
+}
+},
+"required": [
+"dash",
+"gap"
+]
+},
+"LayerCombinationAttribute": {
+"type": "object",
+"description": "A layer combination attribute",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"layerAttributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"attributeId",
+"name",
+"layerAttributeIds"
+]
+},
+"Point2D": {
+"type": "object",
+"description": "Coordinates of a 2D point",
+"properties": {
+"x": {
+"type": "number",
+"description": "X coordinate of 2D point"
+},
+"y": {
+"type": "number",
+"description": "Y coordinate of 2D point"
+}
+},
+"required": [
+"x",
+"y"
+]
+},
+"NonLocalizedValueEnumId": {
+"type": "object",
+"description": "An enumeration value identifier using the nonlocalized value.",
+"properties": {
+"nonLocalizedValue": {
+"type": "string",
+"description": "EMPTY STRING"
+},
+"type": {
+"type": "string",
+"enum": [
+"nonLocalizedValue"
+],
+"description": "EMPTY STRING"
+}
+},
+"required": [
+"nonLocalizedValue"
+]
+},
+"EnumValueId": {
+"oneOf": [
+{
+"$ref": "#/DisplayValueEnumId"
+},
+{
+"$ref": "#/NonLocalizedValueEnumId"
+}
+],
+"description": "The identifier of a property enumeration value."
+},
+"Image": {
+"type": "object",
+"description": "An image encoded as a Base64 string.",
+"properties": {
+"content": {
+"type": "string",
+"description": "The image content as a string ."
+}
+},
+"required": [
+"content"
+]
+},
+"RGBColor": {
+"type": "object",
+"description": "A color model represented via its red, green and blue components.",
+"properties": {
+"red": {
+"type": "number",
+"maximum": 1,
+"description": "The red component of the color model."
+},
+"green": {
+"type": "number",
+"maximum": 1,
+"description": "The green component of the color model."
+},
+"blue": {
+"type": "number",
+"maximum": 1,
+"description": "The blue component of the color model."
+}
+},
+"required": [
+"red",
+"green",
+"blue"
+]
+},
+"ComponentId": {
+"type": "object",
+"description": "The identifier of a component.",
+"properties": {
+"guid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+}
+},
+"required": [
+"guid"
+]
+},
+"ElementComponentId": {
+"type": "object",
+"description": "The identifier of an element's component.",
+"properties": {
+"elementId": {
+"$ref": "#/ElementId",
+"description": "The identifier of an element."
+},
+"componentId": {
+"$ref": "#/ComponentId",
+"description": "The identifier of a component."
+}
+},
+"required": [
+"elementId",
+"componentId"
+]
+},
+"ElementComponentIdArrayItem": {
+"type": "object",
+"description": "An item of a component array.",
+"properties": {
+"elementComponentId": {
+"$ref": "#/ElementComponentId",
+"description": "The identifier of an element's component."
+}
+},
+"required": [
+"elementComponentId"
+]
+},
+"ElementComponentsWrapper": {
+"type": "object",
+"description": "List of components.",
+"properties": {
+"elementComponents": {
+"type": "array",
+"items": {
+"$ref": "#/ElementComponentIdArrayItem"
+},
+"description": "List of components of elements."
+}
+},
+"required": [
+"elementComponents"
+]
+},
+"ElementComponentsOrError": {
+"oneOf": [
+{
+"$ref": "#/ElementComponentsWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "List of components or error."
+},
+"LayerAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     layerAttribute (:obj:`LayerAttribute`): A layer attribute",
+"properties": {
+"layerAttribute": {
+"$ref": "#/LayerAttribute",
+"description": "A layer attribute"
+}
+},
+"required": [
+"layerAttribute"
+]
+},
+"FillAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     fillAttribute (:obj:`FillAttribute`): A fill attribute.",
+"properties": {
+"fillAttribute": {
+"$ref": "#/FillAttribute",
+"description": "A fill attribute."
+}
+},
+"required": [
+"fillAttribute"
+]
+},
+"ProfileAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     profileAttribute (:obj:`ProfileAttribute`): A profile attribute.",
+"properties": {
+"profileAttribute": {
+"$ref": "#/ProfileAttribute",
+"description": "A profile attribute."
+}
+},
+"required": [
+"profileAttribute"
+]
+},
+"DashItemWrapper": {
+"type": "object",
+"description": "Attributes:     dashItem (:obj:`DashItem`): A dash item.",
+"properties": {
+"dashItem": {
+"$ref": "#/DashItem",
+"description": "A dash item."
+}
+},
+"required": [
+"dashItem"
+]
+},
+"LayerCombinationAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     layerCombinationAttribute (:obj:`LayerCombinationAttribute`): A layer combination attribute",
+"properties": {
+"layerCombinationAttribute": {
+"$ref": "#/LayerCombinationAttribute",
+"description": "A layer combination attribute"
+}
+},
+"required": [
+"layerCombinationAttribute"
+]
+},
+"ImageWrapper": {
+"type": "object",
+"description": "Attributes:     image (:obj:`Image`): An image encoded as a Base64 string.",
+"properties": {
+"image": {
+"$ref": "#/Image",
+"description": "An image encoded as a Base64 string."
+}
+},
+"required": [
+"image"
+]
+},
+"AttributeIdOrError": {
+"oneOf": [
+{
+"$ref": "#/AttributeIdWrapperItem"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "The attribute's identifier or an error."
+},
+"LayerAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/LayerAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A layer attribute or an error."
+},
+"FillAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/FillAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A fill attribute or an error."
+},
+"SurfaceAttribute": {
+"type": "object",
+"description": "A surface attribute.",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"materialType": {
+"type": "string",
+"enum": [
+"General",
+"Simple",
+"Matte",
+"Metal",
+"Plastic",
+"Glass",
+"Glowing",
+"Constant"
+],
+"description": "The material type of a surface attribute."
+},
+"ambientReflection": {
+"type": "integer",
+"maximum": 100,
+"description": "The ambient reflection of the surface attribute."
+},
+"diffuseReflection": {
+"type": "integer",
+"maximum": 100,
+"description": "The diffuse reflection of the surface attribute."
+},
+"specularReflection": {
+"type": "integer",
+"maximum": 100,
+"description": "The specular reflection of the surface attribute."
+},
+"transparencyAttenuation": {
+"type": "integer",
+"maximum": 400,
+"description": "The transparency attenuation of the surface attribute."
+},
+"emissionAttenuation": {
+"type": "integer",
+"maximum": 65535,
+"description": "The emission attenuation of the surface attribute."
+},
+"surfaceColor": {
+"$ref": "#/RGBColor",
+"description": "A color model represented via its red, green and blue components."
+},
+"specularColor": {
+"$ref": "#/RGBColor",
+"description": "A color model represented via its red, green and blue components."
+},
+"emissionColor": {
+"$ref": "#/RGBColor",
+"description": "A color model represented via its red, green and blue components."
+},
+"fillId": {
+"$ref": "#/AttributeIdOrError",
+"description": "The attribute's identifier or an error."
+},
+"transparency": {
+"type": "integer",
+"maximum": 100,
+"description": "The transparency of the surface attribute."
+},
+"shine": {
+"type": "integer",
+"maximum": 10000,
+"description": "The shininess of the surface attribute."
+},
+"texture": {
+"$ref": "#/Texture",
+"description": "A texture"
+}
+},
+"required": [
+"attributeId",
+"name",
+"materialType",
+"ambientReflection",
+"diffuseReflection",
+"specularReflection",
+"transparencyAttenuation",
+"emissionAttenuation",
+"surfaceColor",
+"specularColor",
+"emissionColor",
+"fillId",
+"transparency",
+"shine"
+]
+},
+"ProfileAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/ProfileAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A profile attribute or an error."
+},
+"CompositeLine": {
+"type": "object",
+"description": "A contour or separator line component for a composite attribute.",
+"properties": {
+"lineId": {
+"$ref": "#/AttributeIdOrError",
+"description": "The attribute's identifier or an error."
+},
+"linePenIndex": {
+"type": "integer",
+"maximum": 255,
+"description": "The index number of a pen."
+}
+},
+"required": [
+"lineId"
+]
+},
+"CompositeLineListItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"compositeLine": {
+"$ref": "#/CompositeLine",
+"description": "A contour or separator line component for a composite attribute."
+}
+},
+"required": [
+"compositeLine"
+]
+},
+"CompositeSkin": {
+"type": "object",
+"description": "A skin component for a composite attribute.",
+"properties": {
+"buildingMaterialId": {
+"$ref": "#/AttributeIdOrError",
+"description": "The attribute's identifier or an error."
+},
+"thickness": {
+"type": "number",
+"description": "The thickness of the composite skin."
+},
+"isCore": {
+"type": "boolean",
+"description": "Defines whether the composite skin is part of the core or not."
+},
+"isFinish": {
+"type": "boolean",
+"description": "Defines whether the composite skin is part of the finish or not."
+},
+"framePenIndex": {
+"type": "integer",
+"maximum": 255,
+"description": "The index number of a pen."
+}
+},
+"required": [
+"buildingMaterialId",
+"thickness",
+"isCore",
+"isFinish"
+]
+},
+"CompositeSkinListItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"compositeSkin": {
+"$ref": "#/CompositeSkin",
+"description": "A skin component for a composite attribute."
+}
+},
+"required": [
+"compositeSkin"
+]
+},
+"CompositeAttribute": {
+"type": "object",
+"description": "A composite attribute.",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"totalThickness": {
+"type": "number",
+"description": "The total thickness of the composite."
+},
+"compositeSkins": {
+"type": "array",
+"items": {
+"$ref": "#/CompositeSkinListItem"
+},
+"description": "A list of composite skins."
+},
+"compositeLines": {
+"type": "array",
+"items": {
+"$ref": "#/CompositeLineListItem"
+},
+"description": "A list of contour/separator lines for the composite."
+},
+"useWith": {
+"type": "array",
+"items": {
+"type": "string",
+"enum": [
+"All",
+"Wall",
+"Column",
+"Beam",
+"Window",
+"Door",
+"Object",
+"Lamp",
+"Slab",
+"Roof",
+"Mesh",
+"Zone",
+"CurtainWall",
+"Shell",
+"Skylight",
+"Morph",
+"Stair",
+"Railing",
+"Opening"
+]
+},
+"description": "A list of element types."
+}
+},
+"required": [
+"attributeId",
+"name",
+"totalThickness",
+"compositeSkins",
+"compositeLines",
+"useWith"
+]
+},
+"Pen": {
+"type": "object",
+"description": "A pen attribute.",
+"properties": {
+"index": {
+"type": "integer",
+"maximum": 255,
+"description": "The index number of a pen."
+},
+"color": {
+"$ref": "#/RGBColor",
+"description": "A color model represented via its red, green and blue components."
+},
+"weight": {
+"type": "number",
+"description": "The thickness of the pen defined in millimeters."
+},
+"description": {
+"type": "string",
+"description": "The description of the pen."
+}
+},
+"required": [
+"index",
+"color",
+"weight",
+"description"
+]
+},
+"PenArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"pen": {
+"$ref": "#/Pen",
+"description": "A pen attribute."
+}
+},
+"required": [
+"pen"
+]
+},
+"LineItem": {
+"type": "object",
+"description": "A line item.",
+"properties": {
+"lineItemType": {
+"type": "string",
+"enum": [
+"IllegalItemType",
+"SeparatorItemType",
+"CenterDotItemType",
+"CenterLineItemType",
+"DotItemType",
+"RightAngleItemType",
+"ParallelItemType",
+"LineItemType",
+"CircItemType",
+"ArcItemType"
+],
+"description": "The type of a line item."
+},
+"centerOffset": {
+"type": "number",
+"description": "The vertical distance from the origin of the symbol line. Used in separator, center dot, and centerline item types."
+},
+"length": {
+"type": "number",
+"description": "The length of the item. Used in centerline, right angle, and parallel item types."
+},
+"begPosition": {
+"$ref": "#/Point2D",
+"description": "Coordinates of a 2D point"
+},
+"endPosition": {
+"$ref": "#/Point2D",
+"description": "Coordinates of a 2D point"
+},
+"radius": {
+"type": "number",
+"description": "The radius of the item. Used in circle and arc item types."
+},
+"begAngle": {
+"type": "number",
+"description": "The beginning angle of the item, measured from the vertical axis. Used in the arc item type."
+},
+"endAngle": {
+"type": "number",
+"description": "The ending angle of the item, measured from the vertical axis. Used in the arc item type."
+}
+},
+"required": [
+"lineItemType",
+"centerOffset",
+"length",
+"begPosition",
+"endPosition",
+"radius",
+"begAngle",
+"endAngle"
+]
+},
+"ZoneCategoryAttribute": {
+"type": "object",
+"description": "A zone category.",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"categoryCode": {
+"type": "string",
+"description": "The category code of the zone."
+},
+"stampName": {
+"type": "string",
+"description": "The stamp name of the zone category."
+},
+"stampMainGuid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+},
+"stampRevisionGuid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+},
+"color": {
+"$ref": "#/RGBColor",
+"description": "A color model represented via its red, green and blue components."
+}
+},
+"required": [
+"attributeId",
+"name",
+"categoryCode",
+"stampName",
+"stampMainGuid",
+"stampRevisionGuid",
+"color"
+]
+},
+"BuildingMaterialAttribute": {
+"type": "object",
+"description": "A building material attribute",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"id": {
+"type": "string",
+"description": "The id of the building material."
+},
+"connectionPriority": {
+"type": "integer",
+"description": "The connection priority of the building material."
+},
+"cutFillId": {
+"$ref": "#/AttributeIdOrError",
+"description": "The attribute's identifier or an error."
+},
+"cutFillPenIndex": {
+"type": "integer",
+"maximum": 255,
+"description": "The index number of a pen."
+},
+"cutSurfaceId": {
+"$ref": "#/AttributeIdOrError",
+"description": "The attribute's identifier or an error."
+}
+},
+"required": [
+"attributeId",
+"name",
+"id",
+"connectionPriority",
+"cutFillId",
+"cutFillPenIndex",
+"cutSurfaceId"
+]
+},
+"LayerCombinationAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/LayerCombinationAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A layer combination attribute or an error."
+},
+"ImageOrError": {
+"oneOf": [
+{
+"$ref": "#/ImageWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "An image or an error."
+},
+"SurfaceAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     surfaceAttribute (:obj:`SurfaceAttribute`): A surface attribute.",
+"properties": {
+"surfaceAttribute": {
+"$ref": "#/SurfaceAttribute",
+"description": "A surface attribute."
+}
+},
+"required": [
+"surfaceAttribute"
+]
+},
+"CompositeAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     compositeAttribute (:obj:`CompositeAttribute`): A composite attribute.",
+"properties": {
+"compositeAttribute": {
+"$ref": "#/CompositeAttribute",
+"description": "A composite attribute."
+}
+},
+"required": [
+"compositeAttribute"
+]
+},
+"LineItemWrapper": {
+"type": "object",
+"description": "Attributes:     lineItem (:obj:`LineItem`): A line item.",
+"properties": {
+"lineItem": {
+"$ref": "#/LineItem",
+"description": "A line item."
+}
+},
+"required": [
+"lineItem"
+]
+},
+"ZoneCategoryAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     zoneCategoryAttribute (:obj:`ZoneCategoryAttribute`): A zone category.",
+"properties": {
+"zoneCategoryAttribute": {
+"$ref": "#/ZoneCategoryAttribute",
+"description": "A zone category."
+}
+},
+"required": [
+"zoneCategoryAttribute"
+]
+},
+"BuildingMaterialAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     buildingMaterialAttribute (:obj:`BuildingMaterialAttribute`): A building material attribute",
+"properties": {
+"buildingMaterialAttribute": {
+"$ref": "#/BuildingMaterialAttribute",
+"description": "A building material attribute"
+}
+},
+"required": [
+"buildingMaterialAttribute"
+]
+},
+"PenTableAttribute": {
+"type": "object",
+"description": "A pen table attribute.",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"pens": {
+"type": "array",
+"items": {
+"$ref": "#/PenArrayItem"
+},
+"description": "A collection of pens in a pen table."
+}
+},
+"required": [
+"attributeId",
+"name",
+"pens"
+]
+},
+"SurfaceAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/SurfaceAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A surface attribute or an error."
+},
+"CompositeAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/CompositeAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A composite attribute or an error."
+},
+"DashOrLineItem": {
+"oneOf": [
+{
+"$ref": "#/DashItemWrapper"
+},
+{
+"$ref": "#/LineItemWrapper"
+}
+],
+"description": "A dash or line item."
+},
+"LineAttribute": {
+"type": "object",
+"description": "A line attribute",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"appearanceType": {
+"type": "string",
+"enum": [
+"ScaleWithPlan",
+"ScaleIndependent"
+],
+"description": "The appearance type of a line or fill attribute."
+},
+"displayScale": {
+"type": "number",
+"description": "The original scale of the line."
+},
+"period": {
+"type": "number",
+"description": "The length of the dashed or symbol line's period."
+},
+"height": {
+"type": "number",
+"description": "The height of the symbol line."
+},
+"lineType": {
+"type": "string",
+"enum": [
+"SolidLine",
+"DashedLine",
+"SymbolLine"
+],
+"description": "The type of a line attribute."
+},
+"lineItems": {
+"type": "array",
+"items": {
+"$ref": "#/DashOrLineItem"
+},
+"description": "A list of dash or line items."
+}
+},
+"required": [
+"attributeId",
+"name",
+"appearanceType",
+"displayScale",
+"period",
+"height",
+"lineType"
+]
+},
+"ZoneCategoryAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/ZoneCategoryAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A zone category attribute or an error."
+},
+"BuildingMaterialAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/BuildingMaterialAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A building material attribute or an error."
+},
+"PenTableAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     penTableAttribute (:obj:`PenTableAttribute`): A pen table attribute.",
+"properties": {
+"penTableAttribute": {
+"$ref": "#/PenTableAttribute",
+"description": "A pen table attribute."
+}
+},
+"required": [
+"penTableAttribute"
+]
+},
+"LineAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     lineAttribute (:obj:`LineAttribute`): A line attribute",
+"properties": {
+"lineAttribute": {
+"$ref": "#/LineAttribute",
+"description": "A line attribute"
+}
+},
+"required": [
+"lineAttribute"
+]
+},
+"PenTableAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/PenTableAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A pen table attribute or an error."
+},
+"LineAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/LineAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A line attribute or an error."
+},
+"AddOnId": {
+"type": "object",
+"description": "The Add-On identifier.",
+"properties": {
+"developerId": {
+"type": "integer",
+"description": "The ID of the Add-On's developer."
+},
+"localId": {
+"type": "integer",
+"description": "The local ID of the Add-On."
+}
+},
+"required": [
+"developerId",
+"localId"
+]
+},
+"AttributeFolderId": {
+"type": "object",
+"description": "The identifier of an attribute folder.",
+"properties": {
+"guid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+}
+},
+"required": [
+"guid"
+]
+},
+"AttributeFolder": {
+"type": "object",
+"description": "Identifies an attribute folder. The path of the root folder is repesented by empty array.",
+"properties": {
+"attributeType": {
+"type": "string",
+"enum": [
+"BuildingMaterial",
+"Composite",
+"Fill",
+"Layer",
+"LayerCombination",
+"Line",
+"PenTable",
+"Profile",
+"Surface",
+"ZoneCategory",
+"MEPSystem",
+"OperationProfile"
+],
+"description": "The type of an attribute."
+},
+"path": {
+"type": "array",
+"items": {
+"type": "string",
+"minLength": 1
+},
+"description": "A list of attribute folder names. May be empty."
+},
+"attributeFolderId": {
+"$ref": "#/AttributeFolderId",
+"description": "The identifier of an attribute folder."
+},
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+},
+"attributeFolderIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeFolderIdWrapperItem"
+},
+"description": "A list of attribute folder identifiers."
+}
+},
+"required": [
+"attributeType",
+"path",
+"attributeFolderId",
+"attributeIds",
+"attributeFolderIds"
+]
+},
+"AttributeFolderContent": {
+"type": "object",
+"description": "An attribute folder content. Contains subfolders and attributes.",
+"properties": {
+"subfolders": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeFolder"
+},
+"description": "A list of attribute folders."
+},
+"attributeIds": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeIdWrapperItem"
+},
+"description": "A list of attribute identifiers."
+}
+},
+"required": [
+"subfolders",
+"attributeIds"
+]
+},
+"GeneralNavigatorItemData": {
+"type": "object",
+"description": "The common data of a navigator item.",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"prefix": {
+"type": "string",
+"description": "The prefix of the navigator item's name."
+},
+"name": {
+"type": "string",
+"description": "The name of the navigator item."
+}
+},
+"required": [
+"navigatorItemId",
+"prefix",
+"name"
+]
+},
+"NavigatorItemIdAndType": {
+"type": "object",
+"description": "Consists of a navigator item type and an identifier.",
+"properties": {
+"navigatorItemType": {
+"type": "string",
+"enum": [
+"UndefinedItem",
+"ProjectMapRootItem",
+"StoryItem",
+"SectionItem",
+"ElevationItem",
+"InteriorElevationItem",
+"WorksheetItem",
+"DetailItem",
+"DocumentFrom3DItem",
+"Perspective3DItem",
+"Axonometry3DItem",
+"CameraSetItem",
+"CameraItem",
+"ScheduleItem",
+"ProjectIndexItem",
+"TextListItem",
+"GraphicListItem",
+"InfoItem",
+"HelpItem",
+"FolderItem",
+"LayoutBookRootItem",
+"SubsetItem",
+"LayoutItem",
+"DrawingItem",
+"MasterFolderItem",
+"MasterLayoutItem"
+],
+"description": "The type of a navigator item. The 'UndefinedItem' type is used when the actual type of the navigator item cannot be retrieved from Archicad."
+},
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+}
+},
+"required": [
+"navigatorItemType",
+"navigatorItemId"
+]
+},
+"DetailNavigatorItem": {
+"type": "object",
+"description": "The details of a detail navigator item.",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"prefix": {
+"type": "string",
+"description": "The prefix of the navigator item's name."
+},
+"name": {
+"type": "string",
+"description": "The name of the navigator item."
+}
+},
+"required": [
+"navigatorItemId",
+"prefix",
+"name"
+]
+},
+"Document3DNavigatorItem": {
+"type": "object",
+"description": "The details of a 3D document navigator item.",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"prefix": {
+"type": "string",
+"description": "The prefix of the navigator item's name."
+},
+"name": {
+"type": "string",
+"description": "The name of the navigator item."
+}
+},
+"required": [
+"navigatorItemId",
+"prefix",
+"name"
+]
+},
+"ElevationNavigatorItem": {
+"type": "object",
+"description": "The details of an elevation navigator item.",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"prefix": {
+"type": "string",
+"description": "The prefix of the navigator item's name."
+},
+"name": {
+"type": "string",
+"description": "The name of the navigator item."
+}
+},
+"required": [
+"navigatorItemId",
+"prefix",
+"name"
+]
+},
+"InteriorElevationNavigatorItem": {
+"type": "object",
+"description": "The details of an interior elevation navigator item.",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"prefix": {
+"type": "string",
+"description": "The prefix of the navigator item's name."
+},
+"name": {
+"type": "string",
+"description": "The name of the navigator item."
+}
+},
+"required": [
+"navigatorItemId",
+"prefix",
+"name"
+]
+},
+"SectionNavigatorItem": {
+"type": "object",
+"description": "The details of a section navigator item.",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"prefix": {
+"type": "string",
+"description": "The prefix of the navigator item's name."
+},
+"name": {
+"type": "string",
+"description": "The name of the navigator item."
+}
+},
+"required": [
+"navigatorItemId",
+"prefix",
+"name"
+]
+},
+"StoryNavigatorItem": {
+"type": "object",
+"description": "The details of a story navigator item.",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"prefix": {
+"type": "string",
+"description": "The prefix of the navigator item's name."
+},
+"name": {
+"type": "string",
+"description": "The name of the navigator item."
+},
+"floorLevel": {
+"type": "number",
+"description": "The floor level of the story navigator item."
+},
+"floorNumber": {
+"type": "number",
+"description": "The floor number of the story navigator item."
+}
+},
+"required": [
+"navigatorItemId",
+"prefix",
+"name",
+"floorLevel",
+"floorNumber"
+]
+},
+"WorksheetNavigatorItem": {
+"type": "object",
+"description": "The details of a worksheet navigator item.",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"prefix": {
+"type": "string",
+"description": "The prefix of the navigator item's name."
+},
+"name": {
+"type": "string",
+"description": "The name of the navigator item."
+}
+},
+"required": [
+"navigatorItemId",
+"prefix",
+"name"
+]
+},
+"PropertyGroupId": {
+"type": "object",
+"description": "The identifier of a property group.",
+"properties": {
+"guid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+}
+},
+"required": [
+"guid"
+]
+},
+"PropertyGroupIdArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"propertyGroupId": {
+"$ref": "#/PropertyGroupId",
+"description": "The identifier of a property group."
+}
+},
+"required": [
+"propertyGroupId"
+]
+},
+"TypeOfElement": {
+"type": "object",
+"description": "An element id and its corresponding element type.",
+"properties": {
+"elementId": {
+"$ref": "#/ElementId",
+"description": "The identifier of an element."
+},
+"elementType": {
+"type": "string",
+"enum": [
+"All",
+"Wall",
+"Column",
+"Beam",
+"Window",
+"Door",
+"Object",
+"Lamp",
+"Slab",
+"Roof",
+"Mesh",
+"Zone",
+"CurtainWall",
+"Shell",
+"Skylight",
+"Morph",
+"Stair",
+"Railing",
+"Opening"
+],
+"description": "The type of an element."
+}
+},
+"required": [
+"elementId",
+"elementType"
+]
+},
+"ClassificationSystemWrapper": {
+"type": "object",
+"description": "Attributes:     classificationSystem (:obj:`ClassificationSystem`): The details of a classification system.",
+"properties": {
+"classificationSystem": {
+"$ref": "#/ClassificationSystem",
+"description": "The details of a classification system."
+}
+},
+"required": [
+"classificationSystem"
+]
+},
+"NavigatorItemIdAndTypeWrapper": {
+"type": "object",
+"description": "Attributes:     navigatorItemIdAndType (:obj:`NavigatorItemIdAndType`): Consists of a navigator item type and an identifier.",
+"properties": {
+"navigatorItemIdAndType": {
+"$ref": "#/NavigatorItemIdAndType",
+"description": "Consists of a navigator item type and an identifier."
+}
+},
+"required": [
+"navigatorItemIdAndType"
+]
+},
+"DetailNavigatorItemWrapper": {
+"type": "object",
+"description": "Attributes:     detailNavigatorItem (:obj:`DetailNavigatorItem`): The details of a detail navigator item.",
+"properties": {
+"detailNavigatorItem": {
+"$ref": "#/DetailNavigatorItem",
+"description": "The details of a detail navigator item."
+}
+},
+"required": [
+"detailNavigatorItem"
+]
+},
+"Document3DNavigatorItemWrapper": {
+"type": "object",
+"description": "Attributes:     document3DNavigatorItem (:obj:`Document3DNavigatorItem`): The details of a 3D document navigator item.",
+"properties": {
+"document3DNavigatorItem": {
+"$ref": "#/Document3DNavigatorItem",
+"description": "The details of a 3D document navigator item."
+}
+},
+"required": [
+"document3DNavigatorItem"
+]
+},
+"ElevationNavigatorItemWrapper": {
+"type": "object",
+"description": "Attributes:     elevationNavigatorItem (:obj:`ElevationNavigatorItem`): The details of an elevation navigator item.",
+"properties": {
+"elevationNavigatorItem": {
+"$ref": "#/ElevationNavigatorItem",
+"description": "The details of an elevation navigator item."
+}
+},
+"required": [
+"elevationNavigatorItem"
+]
+},
+"InteriorElevationNavigatorItemWrapper": {
+"type": "object",
+"description": "Attributes:     interiorElevationNavigatorItem (:obj:`InteriorElevationNavigatorItem`): The details of an interior elevation navigator item.",
+"properties": {
+"interiorElevationNavigatorItem": {
+"$ref": "#/InteriorElevationNavigatorItem",
+"description": "The details of an interior elevation navigator item."
+}
+},
+"required": [
+"interiorElevationNavigatorItem"
+]
+},
+"SectionNavigatorItemWrapper": {
+"type": "object",
+"description": "Attributes:     sectionNavigatorItem (:obj:`SectionNavigatorItem`): The details of a section navigator item.",
+"properties": {
+"sectionNavigatorItem": {
+"$ref": "#/SectionNavigatorItem",
+"description": "The details of a section navigator item."
+}
+},
+"required": [
+"sectionNavigatorItem"
+]
+},
+"StoryNavigatorItemWrapper": {
+"type": "object",
+"description": "Attributes:     storyNavigatorItem (:obj:`StoryNavigatorItem`): The details of a story navigator item.",
+"properties": {
+"storyNavigatorItem": {
+"$ref": "#/StoryNavigatorItem",
+"description": "The details of a story navigator item."
+}
+},
+"required": [
+"storyNavigatorItem"
+]
+},
+"WorksheetNavigatorItemWrapper": {
+"type": "object",
+"description": "Attributes:     worksheetNavigatorItem (:obj:`WorksheetNavigatorItem`): The details of a worksheet navigator item.",
+"properties": {
+"worksheetNavigatorItem": {
+"$ref": "#/WorksheetNavigatorItem",
+"description": "The details of a worksheet navigator item."
+}
+},
+"required": [
+"worksheetNavigatorItem"
+]
+},
+"PropertyGroupWrapper": {
+"type": "object",
+"description": "Attributes:     propertyGroup (:obj:`PropertyGroup`): A property group.",
+"properties": {
+"propertyGroup": {
+"$ref": "#/PropertyGroup",
+"description": "A property group."
+}
+},
+"required": [
+"propertyGroup"
+]
+},
+"TypeOfElementWrapper": {
+"type": "object",
+"description": "Attributes:     typeOfElement (:obj:`TypeOfElement`): An element id and its corresponding element type.",
+"properties": {
+"typeOfElement": {
+"$ref": "#/TypeOfElement",
+"description": "An element id and its corresponding element type."
+}
+},
+"required": [
+"typeOfElement"
+]
+},
+"ClassificationItemAvailability": {
+"type": "object",
+"description": "Contains the ids of property definitions available for the given classification item.",
+"properties": {
+"classificationItemId": {
+"$ref": "#/ClassificationItemId",
+"description": "The identifier of a classification item."
+},
+"availableProperties": {
+"type": "array",
+"items": {
+"$ref": "#/PropertyIdArrayItem"
+},
+"description": "A list of property identifiers."
+}
+},
+"required": [
+"classificationItemId",
+"availableProperties"
+]
+},
+"PropertyDefinitionAvailability": {
+"type": "object",
+"description": "Contains the ids of classification items the given property definiton is available for.",
+"properties": {
+"propertyId": {
+"$ref": "#/PropertyId",
+"description": "The identifier of a property."
+},
+"availableClassifications": {
+"type": "array",
+"items": {
+"$ref": "#/ClassificationItemIdArrayItem"
+},
+"description": "A list of classification item identifiers."
+}
+},
+"required": [
+"propertyId",
+"availableClassifications"
+]
+},
+"ClassificationSystemOrError": {
+"oneOf": [
+{
+"$ref": "#/ClassificationSystemWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains a classification system or error."
+},
+"NavigatorItemIdAndTypeOrError": {
+"oneOf": [
+{
+"$ref": "#/NavigatorItemIdAndTypeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains a pair of navigator item type and identifier or an error."
+},
+"DetailNavigatorItemOrError": {
+"oneOf": [
+{
+"$ref": "#/DetailNavigatorItemWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains a detail navigator item or an error."
+},
+"Document3DNavigatorItemOrError": {
+"oneOf": [
+{
+"$ref": "#/Document3DNavigatorItemWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains a 3D document navigator item or an error."
+},
+"ElevationNavigatorItemOrError": {
+"oneOf": [
+{
+"$ref": "#/ElevationNavigatorItemWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains an elevation navigator item or an error."
+},
+"InteriorElevationNavigatorItemOrError": {
+"oneOf": [
+{
+"$ref": "#/InteriorElevationNavigatorItemWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains an interior elevation navigator item or an error."
+},
+"SectionNavigatorItemOrError": {
+"oneOf": [
+{
+"$ref": "#/SectionNavigatorItemWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains a section navigator item or an error."
+},
+"StoryNavigatorItemOrError": {
+"oneOf": [
+{
+"$ref": "#/StoryNavigatorItemWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains a story navigator item or an error."
+},
+"WorksheetNavigatorItemOrError": {
+"oneOf": [
+{
+"$ref": "#/WorksheetNavigatorItemWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains a worksheet navigator item or an error."
+},
+"BuiltInContainerNavigatorItem": {
+"type": "object",
+"description": "The details of a built-in container navigator item.",
+"properties": {
+"navigatorItemId": {
+"$ref": "#/NavigatorItemId",
+"description": "The identifier of a navigator item."
+},
+"prefix": {
+"type": "string",
+"description": "The prefix of the navigator item's name."
+},
+"name": {
+"type": "string",
+"description": "The name of the navigator item."
+},
+"contentIds": {
+"type": "array",
+"items": {
+"$ref": "#/NavigatorItemIdWrapper"
+},
+"description": "A list of navigator item identifiers."
+}
+},
+"required": [
+"navigatorItemId",
+"prefix",
+"name",
+"contentIds"
+]
+},
+"PropertyGroupOrError": {
+"oneOf": [
+{
+"$ref": "#/PropertyGroupWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A property group or an error."
+},
+"PropertyIdsOfElement": {
+"type": "object",
+"description": "A list property identifiers of an owner element.",
+"properties": {
+"elementId": {
+"$ref": "#/ElementId",
+"description": "The identifier of an element."
+},
+"propertyIds": {
+"type": "array",
+"items": {
+"$ref": "#/PropertyIdArrayItem"
+},
+"description": "A list of property identifiers."
+}
+},
+"required": [
+"elementId",
+"propertyIds"
+]
+},
+"TypeOfElementOrError": {
+"oneOf": [
+{
+"$ref": "#/TypeOfElementWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "The type of an element or an error."
+},
+"ClassificationItemAvailabilityWrapper": {
+"type": "object",
+"description": "Attributes:     classificationItemAvailability (:obj:`ClassificationItemAvailability`): Contains the ids of property definitions available for the given classification item.",
+"properties": {
+"classificationItemAvailability": {
+"$ref": "#/ClassificationItemAvailability",
+"description": "Contains the ids of property definitions available for the given classification item."
+}
+},
+"required": [
+"classificationItemAvailability"
+]
+},
+"PropertyDefinitionAvailabilityWrapper": {
+"type": "object",
+"description": "Attributes:     propertyDefinitionAvailability (:obj:`PropertyDefinitionAvailability`): Contains the ids of classification items the given property definiton is available for.",
+"properties": {
+"propertyDefinitionAvailability": {
+"$ref": "#/PropertyDefinitionAvailability",
+"description": "Contains the ids of classification items the given property definiton is available for."
+}
+},
+"required": [
+"propertyDefinitionAvailability"
+]
+},
+"BuiltInContainerNavigatorItemWrapper": {
+"type": "object",
+"description": "Attributes:     builtInContainerNavigatorItem (:obj:`BuiltInContainerNavigatorItem`): The details of a built-in container navigator item.",
+"properties": {
+"builtInContainerNavigatorItem": {
+"$ref": "#/BuiltInContainerNavigatorItem",
+"description": "The details of a built-in container navigator item."
+}
+},
+"required": [
+"builtInContainerNavigatorItem"
+]
+},
+"PropertyIdsOfElementWrapper": {
+"type": "object",
+"description": "Attributes:     propertyIdsOfElement (:obj:`PropertyIdsOfElement`): A list property identifiers of an owner element.",
+"properties": {
+"propertyIdsOfElement": {
+"$ref": "#/PropertyIdsOfElement",
+"description": "A list property identifiers of an owner element."
+}
+},
+"required": [
+"propertyIdsOfElement"
+]
+},
+"ClassificationItemAvailabilityOrError": {
+"oneOf": [
+{
+"$ref": "#/ClassificationItemAvailabilityWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains the ids of property definitions available for the given classification item or error."
+},
+"PropertyDefinitionAvailabilityOrError": {
+"oneOf": [
+{
+"$ref": "#/PropertyDefinitionAvailabilityWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains the ids of classification items the given property definiton is available for or error."
+},
+"BuiltInContainerNavigatorItemOrError": {
+"oneOf": [
+{
+"$ref": "#/BuiltInContainerNavigatorItemWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "Contains a built-in container navigator item or an error."
+},
+"PropertyIdsOfElementOrError": {
+"oneOf": [
+{
+"$ref": "#/PropertyIdsOfElementWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "A list property identifiers of an owner element or an error."
+},
+"PropertyValue_": {
+"type": "object",
+"description": "",
+"properties": {},
+"required": []
+},
+"PropertyBasicDefaultValue": {
+"type": "object",
+"description": "Default value of the property in case of a basic property value (ie. not an expression).",
+"properties": {
+"basicDefaultValue": {
+"$ref": "#/PropertyValue",
+"description": "A normal, userUndefined, notAvailable or notEvaluated property value."
+}
+},
+"required": [
+"basicDefaultValue"
+]
+},
+"AttributeFolderIdWrapperItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"attributeFolderId": {
+"$ref": "#/AttributeFolderId",
+"description": "The identifier of an attribute folder."
+}
+},
+"required": [
+"attributeFolderId"
+]
+},
+"AttributeFolderCreationParameters": {
+"type": "object",
+"description": "Used to create an attribute folder. The folder type and it's path needs to be provided.",
+"properties": {
+"attributeType": {
+"type": "string",
+"enum": [
+"BuildingMaterial",
+"Composite",
+"Fill",
+"Layer",
+"LayerCombination",
+"Line",
+"PenTable",
+"Profile",
+"Surface",
+"ZoneCategory",
+"MEPSystem",
+"OperationProfile"
+],
+"description": "The type of an attribute."
+},
+"path": {
+"type": "array",
+"items": {
+"type": "string",
+"minLength": 1
+},
+"description": "A list of attribute folder names. May be empty."
+}
+},
+"required": [
+"attributeType",
+"path"
+]
+},
+"AttributeFolderRenameParameters": {
+"type": "object",
+"description": "Used to rename an attribute folder. The folder is identified by it's Id.",
+"properties": {
+"attributeFolderId": {
+"$ref": "#/AttributeFolderId",
+"description": "The identifier of an attribute folder."
+},
+"newName": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute folder. Legal names are not empty, and do not begin or end with whitespace."
+}
+},
+"required": [
+"attributeFolderId",
+"newName"
+]
+},
+"AttributeHeaderArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"attribute": {
+"$ref": "#/AttributeHeader",
+"description": "The header object of an attribute."
+}
+},
+"required": [
+"attribute"
+]
+},
+"AttributeFolderWrapper": {
+"type": "object",
+"description": "Attributes:     attributeFolder (:obj:`AttributeFolder`): Identifies an attribute folder. The path of the root folder is repesented by empty array.",
+"properties": {
+"attributeFolder": {
+"$ref": "#/AttributeFolder",
+"description": "Identifies an attribute folder. The path of the root folder is repesented by empty array."
+}
+},
+"required": [
+"attributeFolder"
+]
+},
+"AttributeFolderOrError": {
+"oneOf": [
+{
+"$ref": "#/AttributeFolderWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "An attribute folder or an error."
+},
+"AttributeFolderStructure_": {
+"type": "object",
+"description": "",
+"properties": {},
+"required": []
+},
+"AttributeFolderStructureArrayItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"attributeFolder": {
+"$ref": "#/AttributeFolderStructure",
+"description": "The details of an attribute folder structure."
+}
+},
+"required": [
+"attributeFolder"
+]
+},
+"AttributeFolderStructure": {
+"type": "object",
+"description": "The details of an attribute folder structure.",
+"properties": {
+"attributeFolderId": {
+"$ref": "#/AttributeFolderId",
+"description": "The identifier of an attribute folder."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute folder. Legal names are not empty, and do not begin or end with whitespace."
+},
+"attributes": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeHeaderArrayItem"
+},
+"description": "A list of attribute headers."
+},
+"subfolders": {
+"type": "array",
+"items": {
+"$ref": "#/AttributeFolderStructureArrayItem"
+},
+"description": "A list of attribute folder structures."
+}
+},
+"required": [
+"attributeFolderId",
+"name"
+]
+},
+"AttributeFolderStructureOrError": {
+"oneOf": [
+{
+"$ref": "#/AttributeFolderStructure"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "An attribute folder structure or an error."
+},
+"AttributeIndexAndGuid": {
+"type": "object",
+"description": "The complete identifier of an attribute.",
+"properties": {
+"guid": {
+"type": "string",
+"format": "uuid",
+"description": "A Globally Unique Identifier (or Universally Unique Identifier) in its string representation as defined in RFC 4122."
+},
+"index": {
+"type": "number",
+"description": "The index of an attribute."
+}
+},
+"required": [
+"guid",
+"index"
+]
+},
+"AttributeIndexAndGuidWrapperItem": {
+"type": "object",
+"description": "EMPTY STRING",
+"properties": {
+"attributeIndexAndGuid": {
+"$ref": "#/AttributeIndexAndGuid",
+"description": "The complete identifier of an attribute."
+}
+},
+"required": [
+"attributeIndexAndGuid"
+]
+},
+"AttributeIndexAndGuidOrError": {
+"oneOf": [
+{
+"$ref": "#/AttributeIndexAndGuidWrapperItem"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "The attribute's identifier or an error."
+},
+"NormalPropertyValue": {
+"oneOf": [
+{
+"$ref": "#/NormalNumberPropertyValue"
+},
+{
+"$ref": "#/NormalIntegerPropertyValue"
+},
+{
+"$ref": "#/NormalStringPropertyValue"
+},
+{
+"$ref": "#/NormalBooleanPropertyValue"
+},
+{
+"$ref": "#/NormalLengthPropertyValue"
+},
+{
+"$ref": "#/NormalAreaPropertyValue"
+},
+{
+"$ref": "#/NormalVolumePropertyValue"
+},
+{
+"$ref": "#/NormalAnglePropertyValue"
+},
+{
+"$ref": "#/NormalNumberListPropertyValue"
+},
+{
+"$ref": "#/NormalIntegerListPropertyValue"
+},
+{
+"$ref": "#/NormalStringListPropertyValue"
+},
+{
+"$ref": "#/NormalBooleanListPropertyValue"
+},
+{
+"$ref": "#/NormalLengthListPropertyValue"
+},
+{
+"$ref": "#/NormalAreaListPropertyValue"
+},
+{
+"$ref": "#/NormalVolumeListPropertyValue"
+},
+{
+"$ref": "#/NormalAngleListPropertyValue"
+},
+{
+"$ref": "#/NormalSingleEnumPropertyValue"
+},
+{
+"$ref": "#/NormalMultiEnumPropertyValue"
+}
+],
+"description": "A normal property value."
+},
+"AttributeCreationInfo": {
+"type": "object",
+"description": "Contains information about the creation of an attribute.",
+"properties": {
+"createdBy": {
+"type": "string",
+"description": "The name of the user who created the attribute."
+},
+"creationTime": {
+"type": "string",
+"description": "The date and time when the attribute was created."
+},
+"creationMethod": {
+"type": "string",
+"description": "Name of the command or workflow that created the attribute."
+},
+"source": {
+"type": "string",
+"description": "The source of the attribute (plan file or add-on)"
+}
+},
+"required": []
+},
+"AttributeIDAndCreationInfo": {
+"type": "object",
+"description": "The identifier and creation information of an attribute.",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"hasCreationInfo": {
+"type": "boolean",
+"description": "Indicates whether the attribute has creation info or not."
+},
+"creationInfo": {
+"$ref": "#/AttributeCreationInfo",
+"description": "Contains information about the creation of an attribute."
+}
+},
+"required": [
+"attributeId",
+"hasCreationInfo"
+]
+},
+"OperationProfileAttribute": {
+"type": "object",
+"description": "An operation profile attribute",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"occupancyType": {
+"type": "string",
+"enum": [
+"Residential",
+"Non-Residential"
+],
+"description": "Occupancy type of an Operation Profile."
+},
+"hotWaterLoad": {
+"type": "number",
+"description": "Service hot water load per capita."
+},
+"humanHeatGain": {
+"type": "number",
+"description": "Human heat gain per capita."
+},
+"humidity": {
+"type": "number",
+"description": "Humidity load."
+}
+},
+"required": [
+"attributeId",
+"name",
+"occupancyType",
+"hotWaterLoad",
+"humanHeatGain",
+"humidity"
+]
+},
+"OwnerUser": {
+"type": "object",
+"description": "Represents the owner user of an element.",
+"properties": {
+"userId": {
+"type": "integer",
+"description": "The unique identifier of the user."
+},
+"userName": {
+"type": "string",
+"description": "The name of the user."
+}
+},
+"required": [
+"userId",
+"userName"
+]
+},
+"AttributeIDAndCreationInfoWrapper": {
+"type": "object",
+"description": "Attributes:     attributeIDAndCreationInfo (:obj:`AttributeIDAndCreationInfo`): The identifier and creation information of an attribute.",
+"properties": {
+"attributeIDAndCreationInfo": {
+"$ref": "#/AttributeIDAndCreationInfo",
+"description": "The identifier and creation information of an attribute."
+}
+},
+"required": [
+"attributeIDAndCreationInfo"
+]
+},
+"OperationProfileAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     operationProfileAttribute (:obj:`OperationProfileAttribute`): An operation profile attribute",
+"properties": {
+"operationProfileAttribute": {
+"$ref": "#/OperationProfileAttribute",
+"description": "An operation profile attribute"
+}
+},
+"required": [
+"operationProfileAttribute"
+]
+},
+"AttributeCreationInfoOrError": {
+"oneOf": [
+{
+"$ref": "#/AttributeIDAndCreationInfoWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "The attribute's guid and creation info - or an error, if the attribute doesn't exist."
+},
+"MEPSystemAttribute": {
+"type": "object",
+"description": "An MEP system attribute",
+"properties": {
+"attributeId": {
+"$ref": "#/AttributeId",
+"description": "The identifier of an attribute."
+},
+"name": {
+"type": "string",
+"minLength": 1,
+"description": "The name of an attribute."
+},
+"domain": {
+"type": "string",
+"enum": [
+"Ventilation",
+"Piping",
+"CableCarrier"
+],
+"description": "The domain of the MEP system."
+},
+"contourPenIndex": {
+"type": "integer",
+"maximum": 255,
+"description": "The index number of a pen."
+},
+"fillPenIndex": {
+"type": "integer",
+"maximum": 255,
+"description": "The index number of a pen."
+},
+"fillBgPenIndex": {
+"type": "integer",
+"maximum": 255,
+"description": "The index number of a pen."
+},
+"centerLinePenIndex": {
+"type": "integer",
+"maximum": 255,
+"description": "The index number of a pen."
+},
+"fillId": {
+"$ref": "#/AttributeIdOrError",
+"description": "The attribute's identifier or an error."
+},
+"centerLineTypeId": {
+"$ref": "#/AttributeIdOrError",
+"description": "The attribute's identifier or an error."
+},
+"materialId": {
+"$ref": "#/AttributeIdOrError",
+"description": "The attribute's identifier or an error."
+},
+"insulationMaterialId": {
+"$ref": "#/AttributeIdOrError",
+"description": "The attribute's identifier or an error."
+}
+},
+"required": [
+"attributeId",
+"name",
+"domain",
+"contourPenIndex",
+"fillPenIndex",
+"fillBgPenIndex",
+"centerLinePenIndex",
+"fillId",
+"centerLineTypeId",
+"materialId",
+"insulationMaterialId"
+]
+},
+"OperationProfileAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/OperationProfileAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "An operation profile attribute or an error."
+},
+"MEPSystemAttributeWrapper": {
+"type": "object",
+"description": "Attributes:     mepSystemAttribute (:obj:`MEPSystemAttribute`): An MEP system attribute",
+"properties": {
+"mepSystemAttribute": {
+"$ref": "#/MEPSystemAttribute",
+"description": "An MEP system attribute"
+}
+},
+"required": [
+"mepSystemAttribute"
+]
+},
+"MEPSystemAttributeOrError": {
+"oneOf": [
+{
+"$ref": "#/MEPSystemAttributeWrapper"
+},
+{
+"$ref": "#/ErrorItem"
+}
+],
+"description": "An MEP system attribute or an error."
+}
+}
+}

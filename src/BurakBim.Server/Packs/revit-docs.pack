@@ -1,0 +1,443 @@
+# BURAK BIM tool pack - Revit documentation: sheets, viewports, titleblocks, revisions, tags, text, dimensions, schedules
+
+@@ revit_sheets_report
+title: Sheets report
+host: revit
+tx: false
+desc: Sheets with number, name, titleblock, placed views and schedules, revisions on sheet.
+code:
+return All<ViewSheet>().Where(s => !s.IsPlaceholder).OrderBy(s => s.SheetNumber).Select(s => (object)R("id", IdOf(s), "number", s.SheetNumber, "name", s.Name,
+  "titleblock", ColView(s).OfCategory(BuiltInCategory.OST_TitleBlocks).WhereElementIsNotElementType().Select(t => Name(t.GetTypeId())).FirstOrDefault(),
+  "views", s.GetAllPlacedViews().Select(v => (object)Name(v)).ToList(), "revisions", s.GetAllRevisionIds().Select(r => (object)Name(r)).ToList())).ToList();
+
+@@ revit_sheets_create
+title: Create sheets (batch)
+host: revit
+desc: Create many sheets at once from [{number, name}] with a titleblock.
+arg: sheets | array! | [{"number":"A-101","name":"GROUND FLOOR PLAN"}, ...]
+arg: titleblock | string | Titleblock type name (default first)
+code:
+var tb = Has("titleblock") ? TypesOfCat(BuiltInCategory.OST_TitleBlocks).First(t => t.Name.Equals(S("titleblock"), StringComparison.OrdinalIgnoreCase)).Id : TypesOfCat(BuiltInCategory.OST_TitleBlocks).Select(t => t.Id).DefaultIfEmpty(ElementId.InvalidElementId).First();
+var made = new List<object>();
+foreach (var o in A("sheets").OfType<Dictionary<string, object>>())
+{
+    var s = ViewSheet.Create(doc, tb);
+    s.SheetNumber = BurakBim.Shared.Json.Str(o, "number", s.SheetNumber); s.Name = BurakBim.Shared.Json.Str(o, "name", s.Name);
+    made.Add(R("id", IdOf(s), "number", s.SheetNumber, "name", s.Name));
+}
+return made;
+
+@@ revit_sheet_edit
+title: Renumber / rename sheets
+host: revit
+desc: Renumber or rename sheets with a map {"A-101":{"number":"A-201","name":"..."}}.
+arg: map | object! | {currentNumber: {number?, name?}}
+code:
+int n = 0; var sheets = All<ViewSheet>().ToList();
+foreach (var kv in O("map"))
+{
+    var s = sheets.FirstOrDefault(x => x.SheetNumber == kv.Key); var v = kv.Value as Dictionary<string, object>; if (s == null || v == null) continue;
+    if (v.ContainsKey("number")) s.SheetNumber = Convert.ToString(v["number"]);
+    if (v.ContainsKey("name")) s.Name = Convert.ToString(v["name"]);
+    n++;
+}
+return R("updated", n);
+
+@@ revit_place_view_on_sheet
+title: Place view on sheet
+host: revit
+desc: Place a view (plan/section/3D/drafting/legend) on a sheet at a point (mm on sheet) or at the sheet centre.
+arg: sheet | string! | Sheet number or name
+arg: view | string! | View name or id
+arg: point | point | Location on sheet (mm), default centre of titleblock
+code:
+var s = All<ViewSheet>().FirstOrDefault(x => x.SheetNumber == S("sheet") || x.Name == S("sheet")); if (s == null) Fail("Sheet not found");
+var v = ViewArg("view");
+XYZ p;
+if (Has("point")) p = P("point");
+else { var bb = s.Outline; p = new XYZ((bb.Min.U + bb.Max.U) / 2, (bb.Min.V + bb.Max.V) / 2, 0); }
+if (v is ViewSchedule) return R("scheduleInstance", IdOf(ScheduleSheetInstance.Create(doc, s.Id, v.Id, p)));
+if (!Viewport.CanAddViewToSheet(doc, s.Id, v.Id)) Fail("View can't be placed (already on a sheet?)");
+var vp = Viewport.Create(doc, s.Id, v.Id, p);
+return R("viewport", IdOf(vp));
+
+@@ revit_viewports_report
+title: Viewports report
+host: revit
+tx: false
+desc: Viewports on sheets with view, sheet, box centre (mm) and type.
+code:
+return All<Viewport>().Select(vp => { var s = doc.GetElement(vp.SheetId) as ViewSheet; return (object)R("id", IdOf(vp), "view", Name(vp.ViewId), "sheet", s == null ? null : s.SheetNumber, "center", Out(vp.GetBoxCenter()), "type", Name(vp.GetTypeId())); }).ToList();
+
+@@ revit_viewport_move
+title: Move viewport
+host: revit
+desc: Move a viewport's centre to a sheet location (mm), or align it to another viewport.
+arg: id | integer! | Viewport id
+arg: center | point | New centre (mm)
+arg: alignTo | integer | Viewport id to copy the centre from
+code:
+var vp = El(I("id")) as Viewport; if (vp == null) Fail("Not a viewport");
+vp.SetBoxCenter(Has("alignTo") ? ((Viewport)El(I("alignTo"))).GetBoxCenter() : P("center"));
+return R("center", Out(vp.GetBoxCenter()));
+
+@@ revit_titleblock_params
+title: Titleblock parameters on sheets
+host: revit
+desc: Read titleblock parameters of sheets, or set values (e.g. Drawn By, Checked By, Sheet Issue Date) on many sheets at once.
+arg: sheets | strings | Sheet numbers (default all)
+arg: values | object | Parameters to set on titleblocks and sheets
+code:
+var res = new List<object>(); var vals = O("values");
+foreach (var s in All<ViewSheet>().Where(x => SL("sheets").Count == 0 || SL("sheets").Contains(x.SheetNumber)))
+{
+    var tb = ColView(s).OfCategory(BuiltInCategory.OST_TitleBlocks).WhereElementIsNotElementType().FirstElement();
+    if (vals != null) foreach (var kv in vals) { var p = Prm(s, kv.Key) ?? (tb == null ? null : Prm(tb, kv.Key)); if (p != null && !p.IsReadOnly) BurakBim.Bridge.Revit.RevitCommands.SetParam(p, kv.Value); }
+    res.Add(R("sheet", s.SheetNumber, "drawnBy", PrmText(s, "Drawn By"), "checkedBy", PrmText(s, "Checked By"), "issueDate", PrmText(s, "Sheet Issue Date")));
+}
+return res;
+
+@@ revit_revisions
+title: Revisions
+host: revit
+tx: false
+desc: Revisions with sequence, date, description, issued flag and sheets carrying each.
+code:
+var sheets = All<ViewSheet>().ToList();
+return Revision.GetAllRevisionIds(doc).Select(id => (Revision)doc.GetElement(id)).Select(r => (object)R("id", IdOf(r), "sequence", r.SequenceNumber, "date", r.RevisionDate, "description", r.Description, "issued", r.Issued,
+   "sheets", sheets.Where(s => s.GetAllRevisionIds().Contains(r.Id)).Select(s => (object)s.SheetNumber).ToList())).ToList();
+
+@@ revit_revision_create
+title: Create revision & add to sheets
+host: revit
+desc: Create a revision (date, description, issued by/to) and add it to sheets.
+arg: description | string! | Description
+arg: date | string | Date text
+arg: sheets | strings | Sheet numbers to add it to
+arg: issuedBy | string | Issued by
+arg: issuedTo | string | Issued to
+code:
+var r = Revision.Create(doc); r.Description = S("description"); if (Has("date")) r.RevisionDate = S("date");
+if (Has("issuedBy")) r.IssuedBy = S("issuedBy"); if (Has("issuedTo")) r.IssuedTo = S("issuedTo");
+int n = 0;
+foreach (var s in All<ViewSheet>().Where(x => SL("sheets").Contains(x.SheetNumber)))
+{ var ids = s.GetAdditionalRevisionIds(); ids.Add(r.Id); s.SetAdditionalRevisionIds(ids); n++; }
+return R("revision", IdOf(r), "sequence", r.SequenceNumber, "sheets", n);
+
+@@ revit_tag_category
+title: Tag all elements of a category in view
+host: revit
+desc: Tag every untagged element of a category in a view (doors, windows, walls, rooms, columns, beams, pipes, ducts, equipment...).
+arg: category | string! | Category to tag
+arg: view | string | View (default active)
+arg: leader | boolean | Add leader
+arg: horizontal | boolean | Horizontal orientation (default true)
+code:
+var v = ViewArg(); var cat = Cat(S("category"));
+if (cat.Id.Equals(new ElementId(BuiltInCategory.OST_Rooms)))
+{
+    var plan = v as ViewPlan; if (plan == null) Fail("Room tags need a plan view");
+    var tagged = new HashSet<long>(ColView(v).OfCategory(BuiltInCategory.OST_RoomTags).Cast<RoomTag>().Select(t => IdOf(t.Room.Id)));
+    int rn = 0;
+    foreach (Room r in ColView(v).OfCategory(BuiltInCategory.OST_Rooms).Cast<Room>().Where(r => r.Location != null && !tagged.Contains(IdOf(r))))
+    { var p = ((LocationPoint)r.Location).Point; doc.Create.NewRoomTag(new LinkElementId(r.Id), new UV(p.X, p.Y), v.Id); rn++; }
+    return R("tagged", rn);
+}
+var already = new HashSet<long>(ColView(v).OfClass(typeof(IndependentTag)).Cast<IndependentTag>().SelectMany(t => t.GetTaggedLocalElementIds()).Select(IdOf));
+int n = 0;
+foreach (var e in ColView(v).OfCategoryId(cat.Id).WhereElementIsNotElementType().Where(e => !already.Contains(IdOf(e))).ToList())
+{
+    XYZ p; var lp = e.Location as LocationPoint; var lc = e.Location as LocationCurve;
+    if (lp != null) p = lp.Point; else if (lc != null) p = lc.Curve.Evaluate(0.5, true); else { var bb = e.get_BoundingBox(v); if (bb == null) continue; p = (bb.Min + bb.Max) / 2; }
+    try { IndependentTag.Create(doc, v.Id, new Reference(e), B("leader"), TagMode.TM_ADDBY_CATEGORY, B("horizontal", true) ? TagOrientation.Horizontal : TagOrientation.Vertical, p); n++; } catch { }
+}
+return R("tagged", n);
+
+@@ revit_untagged_elements
+title: Untagged elements in view
+host: revit
+tx: false
+desc: Elements of a category visible in a view but not tagged - documentation QA.
+arg: category | string! | Category
+arg: view | string | View (default active)
+code:
+var v = ViewArg();
+var tagged = new HashSet<long>(ColView(v).OfClass(typeof(IndependentTag)).Cast<IndependentTag>().SelectMany(t => t.GetTaggedLocalElementIds()).Select(IdOf));
+var un = ColView(v).OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType().Where(e => !tagged.Contains(IdOf(e))).ToList();
+return R("view", v.Name, "untagged", un.Count, "ids", IdList(un));
+
+@@ revit_orphan_tags
+title: Orphaned / empty tags
+host: revit
+desc: Tags whose host is gone or that show nothing; optionally delete them.
+arg: delete | boolean | Delete them
+code:
+var bad = All<IndependentTag>().Where(t => t.GetTaggedLocalElementIds().Count == 0 || t.GetTaggedLocalElementIds().All(i => doc.GetElement(i) == null)).Select(t => t.Id).ToList();
+if (B("delete") && bad.Count > 0) doc.Delete(bad);
+return R("orphaned", bad.Count, "deleted", B("delete"));
+
+@@ revit_text_notes
+title: Text notes report / find
+host: revit
+tx: false
+desc: Text notes in the model (or a view), with optional search text.
+arg: search | string | Contains text
+arg: view | string | Only this view
+code:
+IEnumerable<TextNote> q = Has("view") ? ColView(ViewArg()).OfClass(typeof(TextNote)).Cast<TextNote>() : All<TextNote>();
+if (Has("search")) q = q.Where(t => t.Text.IndexOf(S("search"), StringComparison.OrdinalIgnoreCase) >= 0);
+return q.Take(1000).Select(t => (object)R("id", IdOf(t), "view", Name(t.OwnerViewId), "text", t.Text.Trim(), "type", Name(t.GetTypeId()))).ToList();
+
+@@ revit_text_replace
+title: Find & replace in text notes
+host: revit
+desc: Replace text in all text notes (optionally one view); case sensitive.
+arg: find | string! | Find
+arg: replace | string! | Replace with
+arg: view | string | Only this view
+code:
+IEnumerable<TextNote> q = Has("view") ? ColView(ViewArg()).OfClass(typeof(TextNote)).Cast<TextNote>() : All<TextNote>();
+int n = 0; foreach (var t in q.ToList()) if (t.Text.Contains(S("find"))) { t.Text = t.Text.Replace(S("find"), S("replace")); n++; }
+return R("replaced", n);
+
+@@ revit_text_note_add
+title: Add text note
+host: revit
+desc: Place a text note in a view at a point (mm), with type and width.
+arg: text | string! | Text
+arg: point | point! | Location
+arg: view | string | View (default active)
+arg: type | string | Text type
+arg: widthMm | number | Wrap width (paper mm)
+code:
+var v = ViewArg(); var tt = Has("type") ? All<TextNoteType>().First(t => t.Name == S("type")).Id : doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType);
+var opt = new TextNoteOptions(tt);
+TextNote tn = Has("widthMm") ? TextNote.Create(doc, v.Id, P("point"), N("widthMm") / 304.8, S("text"), opt) : TextNote.Create(doc, v.Id, P("point"), S("text"), opt);
+return R("id", IdOf(tn));
+
+@@ revit_dimension_grids
+title: Dimension grids
+host: revit
+desc: Add a dimension string across all parallel grids (vertical or horizontal set) in a plan view.
+arg: direction | string! | vertical (grids running N-S, dimensioned along X) or horizontal
+arg: offsetMm | number | Distance of the dimension line from the grid ends (default 1500)
+arg: view | string | Plan view (default active)
+code:
+var v = ViewArg(); bool vert = S("direction").StartsWith("v", StringComparison.OrdinalIgnoreCase);
+var grids = All<Grid>().Where(g => g.Curve is Line && Math.Abs(((Line)g.Curve).Direction.X) < 0.01 == vert).ToList();
+if (grids.Count < 2) Fail("Need at least two parallel grids");
+var ra = new ReferenceArray(); foreach (var g in grids) ra.Append(new Reference(g));
+var l0 = (Line)grids[0].Curve; double off = Ft(N("offsetMm", 1500));
+XYZ a, b;
+if (vert) { double y = grids.Max(g => Math.Max(g.Curve.GetEndPoint(0).Y, g.Curve.GetEndPoint(1).Y)) - off; a = new XYZ(grids.Min(g => g.Curve.GetEndPoint(0).X) - 1, y, 0); b = new XYZ(grids.Max(g => g.Curve.GetEndPoint(0).X) + 1, y, 0); }
+else { double x = grids.Min(g => Math.Min(g.Curve.GetEndPoint(0).X, g.Curve.GetEndPoint(1).X)) + off; a = new XYZ(x, grids.Min(g => g.Curve.GetEndPoint(0).Y) - 1, 0); b = new XYZ(x, grids.Max(g => g.Curve.GetEndPoint(0).Y) + 1, 0); }
+var d = doc.Create.NewDimension(v, Line.CreateBound(a, b), ra);
+return R("dimension", IdOf(d), "segments", grids.Count - 1);
+
+@@ revit_dimension_between
+title: Dimension between two elements
+host: revit
+desc: Linear dimension between two elements that have stable references (grids, levels, reference planes, walls centre) along a line (mm).
+arg: a | integer! | First element
+arg: b | integer! | Second element
+arg: start | point! | Dimension line start
+arg: end | point! | Dimension line end
+arg: view | string | View (default active)
+code:
+var ra = new ReferenceArray(); ra.Append(new Reference(El(I("a")))); ra.Append(new Reference(El(I("b"))));
+var d = doc.Create.NewDimension(ViewArg(), Line.CreateBound(P("start"), P("end")), ra);
+return R("dimension", IdOf(d), "valueMm", d.Value.HasValue ? Mm(d.Value.Value) : 0);
+
+@@ revit_dimensions_report
+title: Dimensions report
+host: revit
+tx: false
+desc: Dimensions in a view (or model) with value (mm), type and override text.
+arg: view | string | View
+code:
+IEnumerable<Dimension> q = Has("view") ? ColView(ViewArg()).OfClass(typeof(Dimension)).Cast<Dimension>() : All<Dimension>();
+return q.Take(2000).Select(d => (object)R("id", IdOf(d), "view", Name(d.OwnerViewId), "type", d.DimensionType == null ? null : d.DimensionType.Name, "valueMm", d.Value.HasValue ? (object)Mm(d.Value.Value) : null, "segments", d.NumberOfSegments, "override", d.ValueOverride)).ToList();
+
+@@ revit_detail_lines
+title: Draw detail lines
+host: revit
+desc: Draw detail lines (polyline, mm) in a view with an optional line style.
+arg: points | array! | [[x,y],...]
+arg: closed | boolean | Close
+arg: lineStyle | string | Line style (subcategory of Lines)
+arg: view | string | View (default active)
+code:
+var v = ViewArg(); var pts = A("points").Select(p => Pt(p)).ToList(); var made = new List<object>();
+GraphicsStyle gs = null;
+if (Has("lineStyle")) { var lines = doc.Settings.Categories.get_Item(BuiltInCategory.OST_Lines); foreach (Category sc in lines.SubCategories) if (sc.Name == S("lineStyle")) gs = sc.GetGraphicsStyle(GraphicsStyleType.Projection); }
+int segs = B("closed") ? pts.Count : pts.Count - 1;
+for (int i = 0; i < segs; i++) { var dc = doc.Create.NewDetailCurve(v, Line.CreateBound(pts[i], pts[(i + 1) % pts.Count])); if (gs != null) dc.LineStyle = gs; made.Add(IdOf(dc)); }
+return R("lines", made);
+
+@@ revit_filled_region
+title: Filled region
+host: revit
+desc: Create a filled region from an outline (mm) in a view with a filled region type.
+arg: boundary | array! | [[x,y],...]
+arg: type | string | Filled region type
+arg: view | string | View (default active)
+code:
+var v = ViewArg(); var pts = A("boundary").Select(p => Pt(p)).ToList(); var loop = new CurveLoop();
+for (int i = 0; i < pts.Count; i++) loop.Append(Line.CreateBound(pts[i], pts[(i + 1) % pts.Count]));
+var ft = Has("type") ? All<FilledRegionType>().First(t => t.Name == S("type")) : All<FilledRegionType>().First();
+return R("id", IdOf(FilledRegion.Create(doc, ft.Id, v.Id, new List<CurveLoop> { loop })));
+
+@@ revit_detail_component
+title: Place detail component
+host: revit
+desc: Place a detail item family in a drafting/plan/section view at a point (mm).
+arg: type | string! | Detail item type name
+arg: point | point! | Location
+arg: view | string | View (default active)
+arg: rotationDeg | number | Rotation
+code:
+var v = ViewArg(); var sym = TypeByName<FamilySymbol>(S("type"), BuiltInCategory.OST_DetailComponents); if (!sym.IsActive) { sym.Activate(); doc.Regenerate(); }
+var fi = doc.Create.NewFamilyInstance(P("point"), sym, v);
+if (Has("rotationDeg")) ElementTransformUtils.RotateElement(doc, fi.Id, Line.CreateBound(P("point"), P("point") + XYZ.BasisZ), Rad(N("rotationDeg")));
+return R("id", IdOf(fi));
+
+@@ revit_schedules_report
+title: Schedules report
+host: revit
+tx: false
+desc: All schedules with category, field names and row count.
+code:
+return All<ViewSchedule>().Where(s => !s.IsTemplate && !s.IsTitleblockRevisionSchedule).Select(s => { var d = s.Definition; var fields = new List<object>(); for (int i = 0; i < d.GetFieldCount(); i++) fields.Add(d.GetField(i).GetName());
+  return (object)R("id", IdOf(s), "name", s.Name, "category", s.Definition.CategoryId == ElementId.InvalidElementId ? "multi" : Name(s.Definition.CategoryId) ?? Category.GetCategory(doc, s.Definition.CategoryId).Name, "fields", fields,
+    "rows", s.GetTableData().GetSectionData(SectionType.Body).NumberOfRows); }).ToList();
+
+@@ revit_schedule_create
+title: Create a schedule
+host: revit
+desc: Create a schedule for a category with named fields (in order), optional sort field and itemize flag. Use materialTakeoff=true for a material takeoff.
+arg: category | string! | Category
+arg: name | string! | Schedule name
+arg: fields | strings! | Field names, e.g. ["Family and Type","Level","Area","Volume","Count"]
+arg: sortBy | string | Field to sort/group by
+arg: itemize | boolean | Itemize every instance (default true)
+arg: materialTakeoff | boolean | Material takeoff schedule
+code:
+var cat = Cat(S("category"));
+var sch = B("materialTakeoff") ? ViewSchedule.CreateMaterialTakeoff(doc, cat.Id) : ViewSchedule.CreateSchedule(doc, cat.Id);
+sch.Name = S("name"); var def = sch.Definition; var missing = new List<object>(); ScheduleFieldId sortId = null;
+foreach (var fname in SL("fields"))
+{
+    var sf = def.GetSchedulableFields().FirstOrDefault(f => f.GetName(doc).Equals(fname, StringComparison.OrdinalIgnoreCase));
+    if (sf == null) { missing.Add(fname); continue; }
+    var fld = def.AddField(sf); if (fname.Equals(S("sortBy") ?? "", StringComparison.OrdinalIgnoreCase)) sortId = fld.FieldId;
+}
+if (sortId != null) def.AddSortGroupField(new ScheduleSortGroupField(sortId));
+def.IsItemized = B("itemize", true);
+return R("id", IdOf(sch), "name", sch.Name, "missingFields", missing, "available", missing.Count == 0 ? null : def.GetSchedulableFields().Select(f => (object)f.GetName(doc)).Take(150).ToList());
+
+@@ revit_schedule_fields
+title: Schedulable fields of a category
+host: revit
+tx: true
+readonly: true
+desc: Field names you can add to a schedule of a category.
+arg: category | string! | Category
+code:
+var tmp = ViewSchedule.CreateSchedule(doc, Cat(S("category")).Id);
+var names = tmp.Definition.GetSchedulableFields().Select(f => (object)f.GetName(doc)).OrderBy(n => (string)n).ToList();
+doc.Delete(tmp.Id);
+return names;
+
+@@ revit_schedule_filter
+title: Add schedule filter
+host: revit
+desc: Add a filter to a schedule (field equals/contains/greater/less a value).
+arg: schedule | string! | Schedule name
+arg: field | string! | Field name
+arg: op | string | Equal (default), NotEqual, Contains, GreaterThan, LessThan, BeginsWith
+arg: value | string! | Value
+code:
+var sch = All<ViewSchedule>().First(s => s.Name == S("schedule")); var def = sch.Definition; ScheduleField fld = null;
+for (int i = 0; i < def.GetFieldCount(); i++) if (def.GetField(i).GetName() == S("field")) fld = def.GetField(i);
+if (fld == null) Fail("Field not in schedule");
+ScheduleFilterType ft; if (!Enum.TryParse(S("op", "Equal"), true, out ft)) ft = ScheduleFilterType.Equal;
+def.AddFilter(new ScheduleFilter(fld.FieldId, ft, S("value")));
+return R("filters", def.GetFilterCount());
+
+@@ revit_schedule_export_csv
+title: Export schedules to CSV
+host: revit
+tx: false
+desc: Export one or all schedules to CSV/TXT files in the exports folder (or a folder).
+arg: schedules | strings | Schedule names (default all)
+arg: folder | string | Output folder
+code:
+var folder = S("folder") ?? BurakBim.Shared.BurakPaths.Sub("exports", "schedules"); System.IO.Directory.CreateDirectory(folder);
+var opt = new ViewScheduleExportOptions { FieldDelimiter = ",", TextQualifier = ExportTextQualifier.DoubleQuote };
+var files = new List<object>();
+foreach (var s in All<ViewSchedule>().Where(x => !x.IsTemplate && !x.IsTitleblockRevisionSchedule && (SL("schedules").Count == 0 || SL("schedules").Contains(x.Name))))
+{
+    var fn = string.Concat(s.Name.Split(System.IO.Path.GetInvalidFileNameChars())) + ".csv";
+    s.Export(folder, fn, opt); files.Add(System.IO.Path.Combine(folder, fn));
+}
+return R("folder", folder, "files", files);
+
+@@ revit_boq_by_category
+title: BOQ by category (CSV)
+host: revit
+tx: false
+desc: Bill of quantities per family/type: count, length (m), area (m2), volume (m3) for chosen categories; also writes a CSV.
+arg: categories | strings | Categories (default walls, floors, columns, framing, doors, windows, pipes, ducts)
+code:
+var cats = SL("categories").Count > 0 ? SL("categories") : new List<string> { "Walls", "Floors", "Structural Columns", "Structural Framing", "Doors", "Windows", "Pipes", "Ducts", "Roofs", "Ceilings" };
+var rows = new List<object>(); var csv = new System.Text.StringBuilder("Category,Type,Count,Length m,Area m2,Volume m3\n");
+foreach (var cn in cats)
+{
+    Category cat; try { cat = Cat(cn); } catch { continue; }
+    foreach (var g in Col().OfCategoryId(cat.Id).WhereElementIsNotElementType().GroupBy(e => Name(e.GetTypeId()) ?? "(none)"))
+    {
+        double len = 0, area = 0, vol = 0;
+        foreach (var e in g)
+        {
+            var lp = e.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH) ?? e.get_Parameter(BuiltInParameter.INSTANCE_LENGTH_PARAM); if (lp != null && lp.HasValue) len += lp.AsDouble();
+            var ap = e.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED); if (ap != null && ap.HasValue) area += ap.AsDouble();
+            var vp = e.get_Parameter(BuiltInParameter.HOST_VOLUME_COMPUTED); if (vp != null && vp.HasValue) vol += vp.AsDouble();
+        }
+        rows.Add(R("category", cat.Name, "type", g.Key, "count", g.Count(), "lengthM", Math.Round(len * 0.3048, 2), "areaM2", SqM(area), "volumeM3", CuM(vol)));
+        csv.AppendLine("\"" + cat.Name + "\",\"" + g.Key + "\"," + g.Count() + "," + Math.Round(len * 0.3048, 2) + "," + SqM(area) + "," + CuM(vol));
+    }
+}
+var file = System.IO.Path.Combine(BurakBim.Shared.BurakPaths.Sub("exports"), "BOQ-" + DateTime.Now.ToString("yyyyMMdd-HHmm") + ".csv");
+System.IO.File.WriteAllText(file, csv.ToString());
+return R("file", file, "rows", rows);
+
+@@ revit_legends_report
+title: Legends & drafting views
+host: revit
+tx: false
+desc: Legend and drafting views with element counts.
+code:
+return All<View>().Where(v => !v.IsTemplate && (v.ViewType == ViewType.Legend || v.ViewType == ViewType.DraftingView))
+  .Select(v => (object)R("id", IdOf(v), "name", v.Name, "type", v.ViewType.ToString(), "elements", ColView(v).GetElementCount())).ToList();
+
+@@ revit_sheet_sets
+title: Print sheet sets
+host: revit
+tx: false
+desc: Saved view/sheet sets used for printing and export.
+code:
+return All<ViewSheetSet>().Select(s => (object)R("id", IdOf(s), "name", s.Name, "views", s.Views.Size)).ToList();
+
+@@ revit_sheet_set_create
+title: Create print/export sheet set
+host: revit
+desc: Save a named set of sheets (by number list or prefix) for printing/exporting.
+arg: name | string! | Set name
+arg: sheets | strings | Sheet numbers
+arg: prefix | string | All sheets whose number starts with this
+code:
+var vs = new ViewSet();
+foreach (var s in All<ViewSheet>().Where(x => SL("sheets").Contains(x.SheetNumber) || (Has("prefix") && x.SheetNumber.StartsWith(S("prefix"))))) vs.Insert(s);
+var pm = doc.PrintManager; pm.PrintRange = PrintRange.Select; var vss = pm.ViewSheetSetting; vss.CurrentViewSheetSet.Views = vs;
+try { vss.SaveAs(S("name")); } catch { vss.Save(); }
+return R("set", S("name"), "sheets", vs.Size);

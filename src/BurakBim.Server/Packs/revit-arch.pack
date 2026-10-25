@@ -1,0 +1,588 @@
+# BURAK BIM tool pack - Revit Architecture: walls, doors, windows, openings, floors, ceilings, roofs, rooms, stairs
+
+@@ revit_walls_report
+title: Walls report
+host: revit
+tx: false
+desc: Every wall with type, level, length (mm), height, area (m2), volume (m3), structural flag and location line - grouped totals by type.
+arg: level | string | Only this level
+code:
+var walls = All<Wall>().ToList();
+if (Has("level")) { var lv = LvlArg(); walls = walls.Where(w => w.LevelId == lv.Id).ToList(); }
+var rows = walls.Select(w => (object)R("id", IdOf(w), "type", w.WallType.Name, "level", Name(w.LevelId),
+    "lengthMm", Mm(w.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH).AsDouble()),
+    "heightMm", Mm(w.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble()),
+    "areaM2", SqM(w.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED).AsDouble()),
+    "volumeM3", CuM(w.get_Parameter(BuiltInParameter.HOST_VOLUME_COMPUTED).AsDouble()),
+    "structural", w.StructuralUsage != StructuralWallUsage.NonBearing, "flipped", w.Flipped)).ToList();
+var totals = walls.GroupBy(w => w.WallType.Name).ToDictionary(g => g.Key, g => (object)R("count", g.Count(),
+    "lengthM", Math.Round(g.Sum(w => w.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH).AsDouble()) * 0.3048, 2),
+    "areaM2", SqM(g.Sum(w => w.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED).AsDouble())),
+    "volumeM3", CuM(g.Sum(w => w.get_Parameter(BuiltInParameter.HOST_VOLUME_COMPUTED).AsDouble()))));
+return R("count", rows.Count, "byType", totals, "walls", rows.Take(1000).ToList());
+
+@@ revit_wall_flip
+title: Flip walls
+host: revit
+desc: Flip wall orientation (exterior/interior side).
+arg: ids | ids | Walls (omit = selection)
+code:
+int n = 0; foreach (var e in Elems("ids")) { var w = e as Wall; if (w != null) { w.Flip(); n++; } }
+return R("flipped", n);
+
+@@ revit_wall_set_height
+title: Set wall height / top constraint
+host: revit
+desc: Set unconnected height (mm) or a top level (+ offset) for walls.
+arg: ids | ids | Walls (omit = selection)
+arg: heightMm | number | Unconnected height
+arg: topLevel | string | Top constraint level
+arg: topOffsetMm | number | Top offset
+arg: baseOffsetMm | number | Base offset
+code:
+int n = 0;
+foreach (var e in Elems("ids"))
+{
+    var w = e as Wall; if (w == null) continue;
+    if (Has("topLevel")) w.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE).Set(Lvl(S("topLevel")).Id);
+    else if (Has("heightMm")) { w.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE).Set(ElementId.InvalidElementId); w.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).Set(Ft(N("heightMm"))); }
+    if (Has("topOffsetMm")) w.get_Parameter(BuiltInParameter.WALL_TOP_OFFSET).Set(Ft(N("topOffsetMm")));
+    if (Has("baseOffsetMm")) w.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).Set(Ft(N("baseOffsetMm")));
+    n++;
+}
+return R("updated", n);
+
+@@ revit_wall_rectangle
+title: Rectangle of walls
+host: revit
+desc: Create 4 joined walls around a rectangle (mm) on a level - quick rooms, cores, boundary walls.
+arg: corner1 | point! | First corner
+arg: corner2 | point! | Opposite corner
+arg: level | string | Level (default lowest)
+arg: type | string | Wall type
+arg: heightMm | number | Height (default 3000)
+arg: topLevel | string | Top level instead of height
+code:
+var a = P("corner1"); var b = P("corner2"); var lv = LvlArg();
+WallType wt = Has("type") ? TypeByName<WallType>(S("type")) : All<WallType>().First(t => t.Kind == WallKind.Basic);
+var z = lv.Elevation;
+var pts = new[] { new XYZ(a.X, a.Y, z), new XYZ(b.X, a.Y, z), new XYZ(b.X, b.Y, z), new XYZ(a.X, b.Y, z) };
+var ids = new List<object>();
+for (int i = 0; i < 4; i++)
+{
+    var w = Wall.Create(doc, Line.CreateBound(pts[i], pts[(i + 1) % 4]), wt.Id, lv.Id, Ft(N("heightMm", 3000)), 0, false, false);
+    if (Has("topLevel")) w.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE).Set(Lvl(S("topLevel")).Id);
+    ids.Add(IdOf(w));
+}
+return R("walls", ids, "type", wt.Name);
+
+@@ revit_wall_polyline
+title: Walls along a polyline
+host: revit
+desc: Create a chain of walls through points (mm), optionally closed.
+arg: points | array! | [[x,y],[x,y],...]
+arg: closed | boolean | Close the loop
+arg: level | string | Level
+arg: type | string | Wall type
+arg: heightMm | number | Height (default 3000)
+arg: structural | boolean | Structural walls
+code:
+var pts = A("points").Select(p => Pt(p)).ToList(); var lv = LvlArg();
+WallType wt = Has("type") ? TypeByName<WallType>(S("type")) : All<WallType>().First(t => t.Kind == WallKind.Basic);
+int segs = B("closed") ? pts.Count : pts.Count - 1; var ids = new List<object>();
+for (int i = 0; i < segs; i++)
+{
+    var p1 = new XYZ(pts[i].X, pts[i].Y, lv.Elevation); var p2 = new XYZ(pts[(i + 1) % pts.Count].X, pts[(i + 1) % pts.Count].Y, lv.Elevation);
+    ids.Add(IdOf(Wall.Create(doc, Line.CreateBound(p1, p2), wt.Id, lv.Id, Ft(N("heightMm", 3000)), 0, false, B("structural"))));
+}
+return R("walls", ids);
+
+@@ revit_wall_arc
+title: Curved wall
+host: revit
+desc: Create an arc wall through start, a point on the arc, and end (mm).
+arg: start | point! | Start
+arg: mid | point! | Point on arc
+arg: end | point! | End
+arg: level | string | Level
+arg: type | string | Wall type
+arg: heightMm | number | Height (default 3000)
+code:
+var lv = LvlArg(); WallType wt = Has("type") ? TypeByName<WallType>(S("type")) : All<WallType>().First(t => t.Kind == WallKind.Basic);
+Func<XYZ, XYZ> z = p => new XYZ(p.X, p.Y, lv.Elevation);
+var arc = Arc.Create(z(P("start")), z(P("end")), z(P("mid")));
+var w = Wall.Create(doc, arc, wt.Id, lv.Id, Ft(N("heightMm", 3000)), 0, false, false);
+return R("id", IdOf(w));
+
+@@ revit_wall_offset_copy
+title: Offset copy of walls
+host: revit
+desc: Copy walls perpendicular to their direction by an offset (mm) - e.g. parallel partitions, cladding layers.
+arg: ids | ids | Walls (omit = selection)
+arg: offsetMm | number! | Offset distance (positive = left of wall direction)
+code:
+var created = new List<object>();
+foreach (var e in Elems("ids"))
+{
+    var lc = e.Location as LocationCurve; if (lc == null) continue;
+    var line = lc.Curve as Line; if (line == null) continue;
+    var n = XYZ.BasisZ.CrossProduct(line.Direction).Normalize().Multiply(Ft(N("offsetMm")));
+    created.AddRange(IdList(ElementTransformUtils.CopyElement(doc, e.Id, n)));
+}
+return R("created", created);
+
+@@ revit_wall_join_ends
+title: Allow / disallow wall end joins
+host: revit
+desc: Allow or disallow automatic joins at both ends of walls.
+arg: ids | ids | Walls (omit = selection)
+arg: allow | boolean! | true = allow, false = disallow
+code:
+int n = 0;
+foreach (var e in Elems("ids")) { var w = e as Wall; if (w == null) continue;
+  for (int end = 0; end < 2; end++) { if (B("allow")) WallUtils.AllowWallJoinAtEnd(w, end); else WallUtils.DisallowWallJoinAtEnd(w, end); } n++; }
+return R("updated", n);
+
+@@ revit_wall_type_create
+title: Create a basic wall type (layers)
+host: revit
+desc: Create a new basic wall type by duplicating one and setting layer thicknesses (mm) and optional materials, e.g. 13mm plaster + 230mm brick + 13mm plaster.
+arg: name | string! | New type name
+arg: layers | array! | [{"thickness":13,"material":"Plaster","function":"Finish1"}, {"thickness":230,"material":"Brick","function":"Structure"}, ...]
+arg: baseType | string | Type to duplicate (default first basic wall)
+code:
+WallType bt = Has("baseType") ? TypeByName<WallType>(S("baseType")) : All<WallType>().First(t => t.Kind == WallKind.Basic);
+var nt = (WallType)bt.Duplicate(S("name"));
+var layers = new List<CompoundStructureLayer>();
+foreach (var o in A("layers").OfType<Dictionary<string, object>>())
+{
+    var fn = BurakBim.Shared.Json.Str(o, "function", "Structure");
+    MaterialFunctionAssignment f;
+    if (!Enum.TryParse(fn, true, out f)) f = MaterialFunctionAssignment.Structure;
+    var matName = BurakBim.Shared.Json.Str(o, "material");
+    var mat = matName == null ? null : All<Material>().FirstOrDefault(m => string.Equals(m.Name, matName, StringComparison.OrdinalIgnoreCase));
+    layers.Add(new CompoundStructureLayer(Ft(BurakBim.Shared.Json.Num(o, "thickness", 100)), f, mat == null ? ElementId.InvalidElementId : mat.Id));
+}
+var cs = CompoundStructure.CreateSimpleCompoundStructure(layers);
+cs.EndCap = EndCapCondition.NoEndCap;
+nt.SetCompoundStructure(cs);
+return R("id", IdOf(nt), "name", nt.Name, "widthMm", Mm(nt.Width));
+
+@@ revit_wall_layers
+title: Wall/floor/roof type layers
+host: revit
+tx: false
+desc: Compound structure layers (function, material, thickness) of wall, floor, roof or ceiling types.
+arg: typeName | string! | Type name
+code:
+var t = Col().WhereElementIsElementType().OfType<HostObjAttributes>().FirstOrDefault(x => string.Equals(x.Name, S("typeName"), StringComparison.OrdinalIgnoreCase));
+if (t == null) Fail("Host type not found");
+var cs = t.GetCompoundStructure();
+if (cs == null) return R("type", t.Name, "layers", new List<object>());
+return R("type", t.Name, "totalMm", Mm(cs.GetWidth()), "layers", cs.GetLayers().Select(l => (object)R("function", l.Function.ToString(), "material", Name(l.MaterialId), "thicknessMm", Mm(l.Width))).ToList());
+
+@@ revit_door_place
+title: Place a door in a wall
+host: revit
+desc: Place a door (or any wall-hosted family) in a wall at a point (mm) or at a distance from the wall start.
+arg: wallId | integer! | Host wall id
+arg: point | point | Insertion point (mm)
+arg: distanceMm | number | Distance from wall start along the wall (instead of point)
+arg: type | string | Door type ('Family : Type' or type name)
+arg: category | string | Category (default Doors; use Windows for windows)
+arg: sillMm | number | Sill height (windows)
+arg: flipHand | boolean | Flip hand
+arg: flipFacing | boolean | Flip facing
+code:
+var w = El(I("wallId")) as Wall; if (w == null) Fail("wallId is not a wall");
+var catName = S("category", "Doors");
+var bic = catName.StartsWith("Win", StringComparison.OrdinalIgnoreCase) ? BuiltInCategory.OST_Windows : BuiltInCategory.OST_Doors;
+var sym = TypeByName<FamilySymbol>(S("type"), bic);
+if (!sym.IsActive) { sym.Activate(); doc.Regenerate(); }
+var curve = ((LocationCurve)w.Location).Curve;
+XYZ p = Has("point") ? P("point") : curve.Evaluate(Ft(N("distanceMm", Mm(curve.Length) / 2)), false);
+p = curve.Project(p).XYZPoint;
+var lv = doc.GetElement(w.LevelId) as Level;
+var fi = doc.Create.NewFamilyInstance(p, sym, w, lv, StructuralType.NonStructural);
+if (Has("sillMm")) { var sp = fi.get_Parameter(BuiltInParameter.INSTANCE_SILL_HEIGHT_PARAM); if (sp != null) sp.Set(Ft(N("sillMm"))); }
+if (B("flipHand")) fi.flipHand();
+if (B("flipFacing")) fi.flipFacing();
+return R("id", IdOf(fi), "type", sym.FamilyName + " : " + sym.Name);
+
+@@ revit_window_place
+title: Place a window in a wall
+host: revit
+desc: Place a window in a wall at a distance from the wall start (mm) with sill height.
+arg: wallId | integer! | Host wall id
+arg: distanceMm | number | Distance along wall (default middle)
+arg: sillMm | number | Sill height (default 900)
+arg: type | string | Window type
+code:
+var w = El(I("wallId")) as Wall; if (w == null) Fail("wallId is not a wall");
+var sym = TypeByName<FamilySymbol>(S("type"), BuiltInCategory.OST_Windows);
+if (!sym.IsActive) { sym.Activate(); doc.Regenerate(); }
+var curve = ((LocationCurve)w.Location).Curve;
+var p = curve.Evaluate(Ft(N("distanceMm", Mm(curve.Length) / 2)), false);
+var fi = doc.Create.NewFamilyInstance(p, sym, w, doc.GetElement(w.LevelId) as Level, StructuralType.NonStructural);
+var sp = fi.get_Parameter(BuiltInParameter.INSTANCE_SILL_HEIGHT_PARAM); if (sp != null) sp.Set(Ft(N("sillMm", 900)));
+return R("id", IdOf(fi));
+
+@@ revit_doors_windows_report
+title: Doors & windows report
+host: revit
+tx: false
+desc: All doors and windows with type, size (width/height mm), host wall, level, room from/to and mark.
+arg: category | string | Doors or Windows (default both)
+code:
+var cats = new List<BuiltInCategory>();
+if (!Has("category") || S("category").StartsWith("D", StringComparison.OrdinalIgnoreCase)) cats.Add(BuiltInCategory.OST_Doors);
+if (!Has("category") || S("category").StartsWith("W", StringComparison.OrdinalIgnoreCase)) cats.Add(BuiltInCategory.OST_Windows);
+var rows = new List<object>();
+foreach (var c in cats) foreach (FamilyInstance fi in OfCat(c).OfType<FamilyInstance>())
+{
+    var t = fi.Symbol;
+    Func<BuiltInParameter, double> dim = bip => { var p = t.get_Parameter(bip) ?? fi.get_Parameter(bip); return p == null ? 0 : Mm(p.AsDouble()); };
+    rows.Add(R("id", IdOf(fi), "category", fi.Category.Name, "type", t.FamilyName + " : " + t.Name, "mark", PrmText(fi, "Mark"),
+        "widthMm", dim(BuiltInParameter.DOOR_WIDTH) > 0 ? dim(BuiltInParameter.DOOR_WIDTH) : dim(BuiltInParameter.WINDOW_WIDTH),
+        "heightMm", dim(BuiltInParameter.DOOR_HEIGHT) > 0 ? dim(BuiltInParameter.DOOR_HEIGHT) : dim(BuiltInParameter.WINDOW_HEIGHT),
+        "host", fi.Host == null ? null : (object)IdOf(fi.Host), "level", Name(fi.LevelId),
+        "fromRoom", fi.FromRoom == null ? null : fi.FromRoom.Name, "toRoom", fi.ToRoom == null ? null : fi.ToRoom.Name));
+}
+return R("count", rows.Count, "items", rows);
+
+@@ revit_wall_opening
+title: Rectangular wall opening
+host: revit
+desc: Cut a rectangular opening in a wall between two points (mm, diagonal corners in the wall plane).
+arg: wallId | integer! | Wall id
+arg: corner1 | point! | Lower corner
+arg: corner2 | point! | Upper opposite corner
+code:
+var w = El(I("wallId")) as Wall; if (w == null) Fail("Not a wall");
+var o = doc.Create.NewOpening(w, P("corner1"), P("corner2"));
+return R("id", IdOf(o));
+
+@@ revit_shaft_opening
+title: Shaft opening
+host: revit
+desc: Vertical shaft opening through floors between a base and top level, from a closed outline (mm).
+arg: boundary | array! | [[x,y],...] outline
+arg: baseLevel | string! | Base level
+arg: topLevel | string! | Top level
+code:
+var pts = A("boundary").Select(p => Pt(p)).ToList();
+var ca = new CurveArray();
+for (int i = 0; i < pts.Count; i++) ca.Append(Line.CreateBound(new XYZ(pts[i].X, pts[i].Y, 0), new XYZ(pts[(i + 1) % pts.Count].X, pts[(i + 1) % pts.Count].Y, 0)));
+var o = doc.Create.NewOpening(Lvl(S("baseLevel")), Lvl(S("topLevel")), ca);
+return R("id", IdOf(o));
+
+@@ revit_floor_from_room
+title: Floor from room boundary
+host: revit
+desc: Create a floor (finish slab) following each room's boundary.
+arg: ids | ids | Room ids (omit = selection)
+arg: type | string | Floor type
+arg: offsetMm | number | Height offset from level
+code:
+var ft = TypeByName<FloorType>(S("type"), BuiltInCategory.OST_Floors); var made = new List<object>();
+foreach (var e in Elems("ids"))
+{
+    var room = e as Room; if (room == null || room.Area <= 0) continue;
+    var segs = room.GetBoundarySegments(new SpatialElementBoundaryOptions()); if (segs == null || segs.Count == 0) continue;
+    var loop = new CurveLoop(); foreach (var s in segs[0]) loop.Append(s.GetCurve());
+    var f = Floor.Create(doc, new List<CurveLoop> { loop }, ft.Id, room.LevelId);
+    if (Has("offsetMm")) f.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).Set(Ft(N("offsetMm")));
+    made.Add(IdOf(f));
+}
+return R("floors", made);
+
+@@ revit_ceiling_from_room
+title: Ceiling from room boundary
+host: revit
+desc: Create a ceiling for each room at a height (mm) above its level.
+arg: ids | ids | Room ids (omit = selection)
+arg: type | string | Ceiling type
+arg: heightMm | number | Height above level (default 2700)
+code:
+var ct = TypeByName<CeilingType>(S("type")); var made = new List<object>();
+foreach (var e in Elems("ids"))
+{
+    var room = e as Room; if (room == null || room.Area <= 0) continue;
+    var segs = room.GetBoundarySegments(new SpatialElementBoundaryOptions()); if (segs == null || segs.Count == 0) continue;
+    var loop = new CurveLoop(); foreach (var s in segs[0]) loop.Append(s.GetCurve());
+    var c = Ceiling.Create(doc, new List<CurveLoop> { loop }, ct.Id, room.LevelId);
+    c.get_Parameter(BuiltInParameter.CEILING_HEIGHTABOVELEVEL_PARAM).Set(Ft(N("heightMm", 2700)));
+    made.Add(IdOf(c));
+}
+return R("ceilings", made);
+
+@@ revit_floors_report
+title: Floors / slabs report
+host: revit
+tx: false
+desc: Floors with type, level, area (m2), volume (m3), thickness and structural flag, plus totals by type.
+code:
+var fl = All<Floor>().ToList();
+return R("count", fl.Count,
+  "byType", fl.GroupBy(f => f.FloorType.Name).ToDictionary(g => g.Key, g => (object)R("count", g.Count(), "areaM2", SqM(g.Sum(f => f.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED).AsDouble())), "volumeM3", CuM(g.Sum(f => f.get_Parameter(BuiltInParameter.HOST_VOLUME_COMPUTED).AsDouble())))),
+  "floors", fl.Take(1000).Select(f => (object)R("id", IdOf(f), "type", f.FloorType.Name, "level", Name(f.LevelId), "areaM2", SqM(f.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED).AsDouble()),
+     "thicknessMm", Mm(f.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM).AsDouble()), "structural", f.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL).AsInteger() == 1)).ToList());
+
+@@ revit_roofs_report
+title: Roofs report
+host: revit
+tx: false
+desc: Roofs with type, level, area and slope info.
+code:
+return All<RoofBase>().Select(r => (object)R("id", IdOf(r), "type", r.RoofType.Name, "level", Name(r.LevelId), "areaM2", SqM(r.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED).AsDouble()), "kind", r.GetType().Name)).ToList();
+
+@@ revit_roof_by_footprint_slope
+title: Footprint roof with slope
+host: revit
+desc: Create a footprint roof from an outline (mm) with every edge sloped (degrees) - hip roof - or flat when slope = 0.
+arg: boundary | array! | [[x,y],...]
+arg: level | string! | Level
+arg: slopeDeg | number | Slope in degrees (default 0 = flat)
+arg: type | string | Roof type
+arg: overhangMm | number | Overhang
+code:
+var lv = LvlArg(); var rt = TypeByName<RoofType>(S("type"));
+var pts = A("boundary").Select(p => Pt(p)).ToList(); var ca = new CurveArray();
+for (int i = 0; i < pts.Count; i++) ca.Append(Line.CreateBound(new XYZ(pts[i].X, pts[i].Y, lv.Elevation), new XYZ(pts[(i + 1) % pts.Count].X, pts[(i + 1) % pts.Count].Y, lv.Elevation)));
+ModelCurveArray mca;
+var roof = doc.Create.NewFootPrintRoof(ca, lv, rt, out mca);
+double slope = N("slopeDeg", 0);
+foreach (ModelCurve mc in mca)
+{
+    roof.set_DefinesSlope(mc, slope > 0);
+    if (slope > 0) roof.set_SlopeAngle(mc, Math.Tan(Rad(slope)));
+    if (Has("overhangMm")) roof.set_Overhang(mc, Ft(N("overhangMm")));
+}
+return R("id", IdOf(roof));
+
+@@ revit_rooms_report
+title: Rooms report
+host: revit
+tx: false
+desc: Rooms with number, name, level, area (m2), perimeter (m), volume, department and placement status, plus totals per level.
+code:
+var rooms = OfCat(BuiltInCategory.OST_Rooms).Cast<Room>().ToList();
+var rows = rooms.Select(r => (object)R("id", IdOf(r), "number", r.Number, "name", r.Name, "level", r.Level == null ? null : r.Level.Name,
+    "areaM2", SqM(r.Area), "perimeterM", Math.Round(r.Perimeter * 0.3048, 2), "volumeM3", CuM(r.Volume),
+    "department", PrmText(r, "Department"), "status", r.Location == null ? "unplaced" : r.Area <= 0 ? "not enclosed / redundant" : "ok")).ToList();
+var perLevel = rooms.Where(r => r.Level != null && r.Area > 0).GroupBy(r => r.Level.Name).ToDictionary(g => g.Key, g => (object)SqM(g.Sum(r => r.Area)));
+return R("count", rows.Count, "areaByLevelM2", perLevel, "rooms", rows);
+
+@@ revit_rooms_auto_place
+title: Auto-place rooms on a level
+host: revit
+desc: Create rooms in every enclosed area of a level (like Place Rooms Automatically).
+arg: level | string! | Level
+code:
+var lv = LvlArg(); var topo = doc.get_PlanTopology(lv); var made = new List<object>();
+foreach (PlanCircuit c in topo.Circuits) { if (c.IsRoomLocated) continue; var r = doc.Create.NewRoom(null, c); made.Add(IdOf(r)); }
+return R("created", made.Count, "ids", made);
+
+@@ revit_room_create_at
+title: Create room at point
+host: revit
+desc: Create a room at a point (mm) on a level with name and number.
+arg: point | point! | Point inside the enclosed area
+arg: level | string! | Level
+arg: name | string | Room name
+arg: number | string | Room number
+code:
+var lv = LvlArg(); var p = P("point");
+var r = doc.Create.NewRoom(lv, new UV(p.X, p.Y));
+if (Has("name")) r.Name = S("name");
+if (Has("number")) r.Number = S("number");
+return R("id", IdOf(r), "areaM2", SqM(r.Area));
+
+@@ revit_rooms_renumber
+title: Renumber rooms
+host: revit
+desc: Renumber rooms on a level in reading order (top-left to bottom-right) with a prefix and start number.
+arg: level | string! | Level
+arg: prefix | string | Prefix (e.g. "G-")
+arg: start | integer | First number (default 1)
+arg: digits | integer | Zero padding (default 2)
+code:
+var lv = LvlArg();
+var rooms = OfCat(BuiltInCategory.OST_Rooms).Cast<Room>().Where(r => r.LevelId == lv.Id && r.Location != null)
+  .OrderByDescending(r => Math.Round(((LocationPoint)r.Location).Point.Y, 0)).ThenBy(r => ((LocationPoint)r.Location).Point.X).ToList();
+int n = I("start", 1);
+foreach (var r in rooms) r.Number = "TMP" + IdOf(r);
+var res = new List<object>();
+foreach (var r in rooms) { r.Number = S("prefix", "") + n.ToString().PadLeft(I("digits", 2), '0'); res.Add(R("id", IdOf(r), "number", r.Number, "name", r.Name)); n++; }
+return res;
+
+@@ revit_room_boundaries
+title: Room boundary outlines
+host: revit
+tx: false
+desc: Boundary loops (mm) of rooms with the bounding element of each segment.
+arg: ids | ids | Rooms (omit = selection)
+code:
+var list = new List<object>();
+foreach (var e in Elems("ids"))
+{
+    var r = e as Room; if (r == null) continue;
+    var loops = new List<object>();
+    var segs = r.GetBoundarySegments(new SpatialElementBoundaryOptions());
+    if (segs != null) foreach (var loop in segs) loops.Add(loop.Select(s => (object)R("start", Out(s.GetCurve().GetEndPoint(0)), "end", Out(s.GetCurve().GetEndPoint(1)), "element", IdOf(s.ElementId))).ToList());
+    list.Add(R("id", IdOf(r), "number", r.Number, "name", r.Name, "loops", loops));
+}
+return list;
+
+@@ revit_room_problems
+title: Unplaced / unenclosed / redundant rooms
+host: revit
+tx: false
+desc: Rooms that are unplaced, not enclosed or redundant - and optionally delete unplaced ones.
+arg: deleteUnplaced | boolean | Delete unplaced rooms
+code:
+var rooms = OfCat(BuiltInCategory.OST_Rooms).Cast<Room>().ToList();
+var unplaced = rooms.Where(r => r.Location == null).ToList();
+var bad = rooms.Where(r => r.Location != null && r.Area <= 0).ToList();
+if (B("deleteUnplaced") && unplaced.Count > 0) doc.Delete(unplaced.Select(r => r.Id).ToList());
+return R("unplaced", unplaced.Count, "notEnclosedOrRedundant", bad.Select(r => (object)R("id", IdOf(r), "number", r.Number, "name", r.Name)).ToList(), "deletedUnplaced", B("deleteUnplaced"));
+
+@@ revit_room_separators
+title: Room separation lines
+host: revit
+desc: Draw room separation lines on a level (mm) - pairs of points.
+arg: level | string! | Level
+arg: lines | array! | [[[x1,y1],[x2,y2]], ...]
+code:
+var lv = LvlArg();
+var view = All<ViewPlan>().FirstOrDefault(v => !v.IsTemplate && v.GenLevel != null && v.GenLevel.Id == lv.Id && v.ViewType == ViewType.FloorPlan);
+if (view == null) Fail("No floor plan for that level");
+var sp = SketchPlane.Create(doc, Plane.CreateByNormalAndOrigin(XYZ.BasisZ, new XYZ(0, 0, lv.Elevation)));
+var ca = new CurveArray();
+foreach (var l in A("lines").OfType<List<object>>()) { var a = Pt(l[0]); var b = Pt(l[1]); ca.Append(Line.CreateBound(new XYZ(a.X, a.Y, lv.Elevation), new XYZ(b.X, b.Y, lv.Elevation))); }
+var mca = doc.Create.NewRoomBoundaryLines(sp, ca, view);
+return R("created", mca.Size);
+
+@@ revit_area_by_department
+title: Area by department / function
+host: revit
+tx: false
+desc: Room area totals grouped by a room parameter (Department, Occupancy, Name...).
+arg: param | string | Room parameter to group by (default Department)
+code:
+var p = S("param", "Department");
+return OfCat(BuiltInCategory.OST_Rooms).Cast<Room>().Where(r => r.Area > 0).GroupBy(r => PrmText(r, p) ?? "(empty)")
+   .ToDictionary(g => g.Key, g => (object)R("rooms", g.Count(), "areaM2", SqM(g.Sum(r => r.Area))));
+
+@@ revit_stairs_railings_report
+title: Stairs & railings report
+host: revit
+tx: false
+desc: Stairs (risers, tread depth, riser height, levels) and railings (type, length).
+code:
+var st = Col().OfCategory(BuiltInCategory.OST_Stairs).WhereElementIsNotElementType().OfType<Stairs>()
+   .Select(s => (object)R("id", IdOf(s), "risers", s.ActualRisersNumber, "treads", s.ActualTreadsNumber, "riserHeightMm", Mm(s.ActualRiserHeight), "treadDepthMm", Mm(s.ActualTreadDepth),
+       "base", Name(s.get_Parameter(BuiltInParameter.STAIRS_BASE_LEVEL_PARAM).AsElementId()), "top", Name(s.get_Parameter(BuiltInParameter.STAIRS_TOP_LEVEL_PARAM).AsElementId()))).ToList();
+var rl = All<Railing>().Select(r => (object)R("id", IdOf(r), "type", Name(r.GetTypeId()), "lengthMm", Mm(r.GetPath().Sum(c => c.Length)))).ToList();
+return R("stairs", st, "railings", rl);
+
+@@ revit_curtain_walls_report
+title: Curtain walls report
+host: revit
+tx: false
+desc: Curtain walls with grid counts, panel and mullion counts.
+code:
+return All<Wall>().Where(w => w.CurtainGrid != null).Select(w => (object)R("id", IdOf(w), "type", w.WallType.Name,
+    "uGrids", w.CurtainGrid.GetUGridLineIds().Count, "vGrids", w.CurtainGrid.GetVGridLineIds().Count,
+    "panels", w.CurtainGrid.GetPanelIds().Count, "mullions", w.CurtainGrid.GetMullionIds().Count)).ToList();
+
+@@ revit_curtain_grid_add
+title: Add curtain grid lines
+host: revit
+desc: Add evenly spaced U (horizontal) or V (vertical) grid lines on a curtain wall.
+arg: wallId | integer! | Curtain wall id
+arg: direction | string! | U or V
+arg: spacingMm | number! | Spacing
+code:
+var w = El(I("wallId")) as Wall; if (w == null || w.CurtainGrid == null) Fail("Not a curtain wall");
+var g = w.CurtainGrid; var lc = (LocationCurve)w.Location; var c = lc.Curve; int n = 0;
+var h = w.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble(); var z0 = c.GetEndPoint(0).Z;
+var step = Ft(N("spacingMm"));
+if (S("direction").ToUpperInvariant() == "V")
+  for (double d = step; d < c.Length - 1e-3; d += step) { g.AddGridLine(false, c.Evaluate(d, false) + new XYZ(0, 0, h / 2), false); n++; }
+else
+  for (double d = step; d < h - 1e-3; d += step) { g.AddGridLine(true, c.Evaluate(0.5, true) + new XYZ(0, 0, d), false); n++; }
+return R("added", n);
+
+@@ revit_furniture_place_grid
+title: Place family instances in a grid
+host: revit
+desc: Place a family type in a rows x columns grid (mm spacing) - furniture, lights, equipment, parking.
+arg: type | string! | Family type name
+arg: category | string | Category of the family
+arg: origin | point! | First instance location
+arg: rows | integer! | Rows
+arg: columns | integer! | Columns
+arg: dxMm | number! | Spacing X
+arg: dyMm | number! | Spacing Y
+arg: level | string | Level
+arg: rotationDeg | number | Rotation
+code:
+var sym = Col().OfClass(typeof(FamilySymbol)).Cast<FamilySymbol>().Where(s => !Has("category") || (s.Category != null && s.Category.Id == Cat(S("category")).Id))
+   .FirstOrDefault(s => string.Equals(s.Name, S("type"), StringComparison.OrdinalIgnoreCase) || string.Equals(s.FamilyName + " : " + s.Name, S("type"), StringComparison.OrdinalIgnoreCase));
+if (sym == null) Fail("Family type not found");
+if (!sym.IsActive) { sym.Activate(); doc.Regenerate(); }
+var lv = LvlArg(); var o = P("origin"); var ids = new List<object>();
+for (int r = 0; r < I("rows"); r++) for (int c = 0; c < I("columns"); c++)
+{
+    var p = new XYZ(o.X + Ft(N("dxMm")) * c, o.Y + Ft(N("dyMm")) * r, lv.Elevation);
+    var fi = doc.Create.NewFamilyInstance(p, sym, lv, StructuralType.NonStructural);
+    if (Has("rotationDeg")) ElementTransformUtils.RotateElement(doc, fi.Id, Line.CreateBound(p, p + XYZ.BasisZ), Rad(N("rotationDeg")));
+    ids.Add(IdOf(fi));
+}
+return R("placed", ids.Count, "ids", ids);
+
+@@ revit_families_report
+title: Loaded families report
+host: revit
+tx: false
+desc: Every loaded family with category, number of types, placed instances and in-place flag.
+arg: category | string | Filter by category
+code:
+var counts = Col().OfClass(typeof(FamilyInstance)).Cast<FamilyInstance>().GroupBy(f => IdOf(f.Symbol.Family.Id)).ToDictionary(g => g.Key, g => g.Count());
+return All<Family>().Where(f => !Has("category") || (f.FamilyCategory != null && f.FamilyCategory.Name.Equals(S("category"), StringComparison.OrdinalIgnoreCase)))
+  .OrderBy(f => f.FamilyCategory == null ? "" : f.FamilyCategory.Name).ThenBy(f => f.Name)
+  .Select(f => (object)R("id", IdOf(f), "name", f.Name, "category", f.FamilyCategory == null ? null : f.FamilyCategory.Name, "types", f.GetFamilySymbolIds().Count,
+     "instances", counts.ContainsKey(IdOf(f)) ? counts[IdOf(f)] : 0, "inPlace", f.IsInPlace)).ToList();
+
+@@ revit_family_types
+title: Types of a family
+host: revit
+tx: false
+desc: Types of a loaded family with their type parameters.
+arg: family | string! | Family name
+code:
+var f = All<Family>().FirstOrDefault(x => string.Equals(x.Name, S("family"), StringComparison.OrdinalIgnoreCase));
+if (f == null) Fail("Family not loaded");
+return f.GetFamilySymbolIds().Select(i => doc.GetElement(i)).Select(t => (object)Desc(t, true)).ToList();
+
+@@ revit_materials_takeoff
+title: Material takeoff (BOQ)
+host: revit
+tx: false
+desc: Total area (m2) and volume (m3) of every material across a category or the whole model.
+arg: category | string | Category (default all model categories)
+code:
+var q = Has("category") ? Col().OfCategoryId(Cat(S("category")).Id).WhereElementIsNotElementType() : Col().WhereElementIsNotElementType();
+var area = new Dictionary<string, double>(); var vol = new Dictionary<string, double>();
+foreach (var e in q)
+{
+    if (e.Category == null || e.Category.CategoryType != CategoryType.Model) continue;
+    foreach (var mid in e.GetMaterialIds(false))
+    {
+        var n = Name(mid) ?? "?";
+        if (!area.ContainsKey(n)) { area[n] = 0; vol[n] = 0; }
+        area[n] += e.GetMaterialArea(mid, false); vol[n] += e.GetMaterialVolume(mid);
+    }
+}
+return area.Keys.OrderBy(k => k).ToDictionary(k => k, k => (object)R("areaM2", SqM(area[k]), "volumeM3", CuM(vol[k])));
