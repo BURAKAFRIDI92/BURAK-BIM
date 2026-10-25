@@ -35,6 +35,7 @@
     <!-- keep WinForms/Drawing out of global usings (fully-qualified where used) -->
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
+    <Using Include="System.IO" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Packs\*.pack" />
