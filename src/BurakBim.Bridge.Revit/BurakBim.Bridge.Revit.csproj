@@ -6,7 +6,9 @@
     <RevitDir Condition="'$(RevitDir)' == ''">C:\Program Files\Autodesk\Revit $(RevitYear)</RevitDir>
     <UseRoslyn Condition="'$(UseRoslyn)' == ''">true</UseRoslyn>
     <TargetFramework Condition="$(RevitYear) &lt; 2025">net48</TargetFramework>
-    <TargetFramework Condition="$(RevitYear) &gt;= 2025">net8.0-windows</TargetFramework>
+    <TargetFramework Condition="$(RevitYear) &gt;= 2025 And $(RevitYear) &lt; 2027">net8.0-windows</TargetFramework>
+    <!-- Revit 2027 runs on .NET 10 (its API assemblies reference System.Runtime 10.0), so its bridge must target net10.0 -->
+    <TargetFramework Condition="$(RevitYear) &gt;= 2027">net10.0-windows</TargetFramework>
     <AssemblyName>BurakBim.Bridge.Revit</AssemblyName>
     <RootNamespace>BurakBim.Bridge.Revit</RootNamespace>
     <Version>1.2.0</Version>
@@ -29,7 +31,7 @@
   <PropertyGroup Condition="'$(UseRoslyn)' == 'true'">
     <DefineConstants>$(DefineConstants);BURAK_ROSLYN</DefineConstants>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows' Or '$(TargetFramework)' == 'net10.0-windows'">
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 
