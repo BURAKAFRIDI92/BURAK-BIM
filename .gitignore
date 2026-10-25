@@ -1,0 +1,28 @@
+# Build output
+bin/
+obj/
+out/
+dist/
+refs/
+publish/
+
+# Visual Studio / editors
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Release installers: attach them to a GitHub Release instead of committing them
+BURAK-BIM-Setup-*.exe
+
+# Local runtime data from an installed copy (tokens, logs, audit trail, reports)
+runtime/
+audit/
+logs/
+reports/
+config/burakbim.json
+
+# OS junk
+Thumbs.db
+.DS_Store

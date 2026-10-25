@@ -1,0 +1,11 @@
+# Let Git normalise line endings for text files
+* text=auto
+
+# Binary files: never touch
+*.exe binary
+*.dll binary
+*.pdb binary
+*.png binary
+*.ico binary
+*.bmp binary
+prebuilt/server/BurakBim.Server binary
