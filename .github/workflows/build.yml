@@ -227,7 +227,8 @@ jobs:
           # the contact details reach every tab
           foreach ($b in @(@('revit', 'Revit'), @('autocad', 'AutoCAD'), @('navisworks', 'Navisworks'))) {
             $dll = [IO.File]::ReadAllBytes((Join-Path $dir "setup\prebuilt\$($b[0])\2024\BurakBim.Bridge.$($b[1]).dll"))
-            if (-not [Text.Encoding]::Unicode.GetString($dll).Contains('+923189848904')) { throw "About text missing from the $($b[0]) bridge" }
+            $latin = [Text.Encoding]::GetEncoding(28591)
+            if (-not $latin.GetString($dll).Contains($latin.GetString([Text.Encoding]::Unicode.GetBytes('+923189848904')))) { throw "About text missing from the $($b[0]) bridge" }
           }
           foreach ($f in 'setup\prebuilt\_shared\net48', 'setup\prebuilt\_shared\netcore', 'setup\tools\roslyn\csc.exe', 'setup\src\BurakBim.Bridge.Navisworks') { if (-not (Test-Path (Join-Path $dir $f))) { throw "$f missing from the installer" } }
           Get-ChildItem (Join-Path $dir 'logs') -Filter 'install-*.log' | Get-Content | Write-Host
