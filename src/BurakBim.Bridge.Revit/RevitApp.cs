@@ -139,6 +139,7 @@ namespace BurakBim.Bridge.Revit
         }
     }
 
+    [Transaction(TransactionMode.Manual)]
     public sealed class ToggleCommand : IExternalCommand
     {
         public Result Execute(ExternalCommandData data, ref string message, ElementSet elements)
