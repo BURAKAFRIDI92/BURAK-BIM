@@ -49,6 +49,17 @@ public static class ClientConnector
         return l;
     }
 
+    /// <summary>Newer Claude Desktop keeps its data in %LOCALAPPDATA%\Claude-Data\claude_&lt;id&gt; instead of %APPDATA%\Claude.</summary>
+    static List<string> ClaudeDataDirs()
+    {
+        try
+        {
+            var root = P(LocalAppData, "Claude-Data");
+            return D(root) ? Directory.GetDirectories(root, "claude*").ToList() : new List<string>();
+        }
+        catch { return new List<string>(); }
+    }
+
     /// <summary>globalStorage folders of VS Code-family editors (for Cline / Roo / Kilo extensions).</summary>
     static IEnumerable<string> EditorUserDirs()
     {
@@ -64,11 +75,13 @@ public static class ClientConnector
         new Target { Id = "claude-desktop", Label = "Claude Desktop", Kind = "mcpServers",
             Files = () =>
             {
-                var l = new List<string> { P(AppData, "Claude", "claude_desktop_config.json") };
-                l.AddRange(MsixClaudeDirs().Select(d => P(d, "claude_desktop_config.json")));
-                return l;
+                var older = new List<string> { P(AppData, "Claude", "claude_desktop_config.json") };
+                older.AddRange(MsixClaudeDirs().Select(d => P(d, "claude_desktop_config.json")));
+                var current = ClaudeDataDirs().Select(d => P(d, "claude_desktop_config.json")).ToList();
+                // a PC on the newer location only needs older files kept in step if they already exist
+                return current.Count == 0 ? older : current.Concat(older.Where(F)).ToList();
             },
-            Installed = () => D(P(AppData, "Claude")) || D(P(LocalAppData, "AnthropicClaude")) || MsixClaudeDirs().Count > 0,
+            Installed = () => ClaudeDataDirs().Count > 0 || D(P(AppData, "Claude")) || D(P(LocalAppData, "Claude")) || D(P(LocalAppData, "AnthropicClaude")) || MsixClaudeDirs().Count > 0,
             Note = "Fully quit Claude Desktop (tray icon > Quit) and start it again. Or install the one-click extension BURAK-BIM.mcpb." },
         new Target { Id = "claude-code", Label = "Claude Code (user scope)", Kind = "mcpServers",
             Files = () => new() { P(Home, ".claude.json") },

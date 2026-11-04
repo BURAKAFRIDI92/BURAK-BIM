@@ -113,6 +113,8 @@ public static class Installer
                     if (Json.Bool(r, "ok")) Ok($"{Json.Str(r, "client")} -> {Json.Str(r, "file")}");
                     else Warn($"{Json.Str(r, "client")}: {Json.Str(r, "error")}");
                 if (rep.Count == 0) Say("    No AI apps found. Install one, then run 'BurakBim.Server.exe --connect-clients'.");
+                if (!rep.Any(r => Json.Str(r, "id") == "claude-desktop"))
+                    Say("    Claude Desktop was not found. If you install it later, use Start menu > BURAK BIM > Connect AI apps again.");
                 // Claude Desktop rewrites its config when it quits, which can remove what was just added
                 if (System.Diagnostics.Process.GetProcessesByName("Claude").Length > 0)
                     Warn("Claude Desktop is open. Quit it from the tray icon, then use Start menu > BURAK BIM > Connect AI apps again, and open Claude Desktop.");

@@ -247,6 +247,18 @@ jobs:
           }
           Remove-Item $pkg -Recurse -Force
 
+          # newer Claude Desktop: its config is in %LOCALAPPDATA%\Claude-Data, and nothing should be created in the older places
+          $newer = Join-Path $env:LOCALAPPDATA 'Claude-Data\claude_citest'; New-Item -ItemType Directory -Force $newer | Out-Null
+          $newerCfg = Join-Path $newer 'claude_desktop_config.json'
+          Set-Content $newerCfg '{"preferences":{"keep":true},"mcpServers":{"other":{"command":"other.exe"}}}' -Encoding ascii
+          Remove-Item (Join-Path $env:APPDATA 'Claude\claude_desktop_config.json') -ErrorAction SilentlyContinue
+          & $exe --home $dir --connect-clients claude-desktop | Out-Null
+          $c = Get-Content $newerCfg -Raw | ConvertFrom-Json
+          if (-not $c.mcpServers.'BURAK-BIM' -or -not $c.mcpServers.other -or -not $c.preferences.keep) { throw "the Claude-Data config was not connected correctly" }
+          if (Test-Path (Join-Path $env:APPDATA 'Claude\claude_desktop_config.json')) { throw "an older Claude config was created beside Claude-Data" }
+          Write-Host "Claude-Data config connected and kept the user's data"
+          Remove-Item (Join-Path $env:LOCALAPPDATA 'Claude-Data') -Recurse -Force
+
           # the contact details reach every tab
           foreach ($file in 'revit\2024\BurakBim.Bridge.Revit.dll', 'autocad\2024\BurakBim.Bridge.AutoCAD.dll', 'navisworks\2024\BurakBim.Bridge.Navisworks.dll', 'rhino\BurakBim.Rhino.rhp') {
             $b = @($file)

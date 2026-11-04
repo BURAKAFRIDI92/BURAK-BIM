@@ -13,6 +13,7 @@ Found in a live test on Navisworks Manage 2027, then checked by comparing the pu
 - **`navis_comment_add` works on 2027**, where a comment's author changed from a string to an `Assignee`.
 - **`navis_publish_nwd` works on 2026 and 2027**, where `PublishFile` needs `NwdExportOptions`. It now warns that Navisworks uses the published NWD as the open model.
 - **Setup's compiler uses only the references it was given.** `/noconfig` was in the response file, where the compiler ignores it, so .NET Framework DLLs could clash in a .NET 8 or .NET 10 compile.
+- **Newer Claude Desktop now connects.** It keeps its config in `%LOCALAPPDATA%\Claude-Data`, which setup did not know, so setup reported success while Claude never saw BURAK BIM. Setup also says so when Claude Desktop is not found.
 - **Claude Desktop from the Microsoft Store keeps its settings.** Setup created a private config holding only BURAK-BIM, which hid the user's other servers and preferences. A new private config now starts from the real one, and a config left by the earlier build is repaired.
 - **Setup asks you to close Claude Desktop and your BIM programs first.** Claude Desktop rewrites its config when it quits, which can remove a new entry, so setup also warns if it is still open.
 - **Upgrades from 1.2.** Setup now stops an older server running through `dotnet.exe`, and asks you to close your programs when a bridge file is in use.
