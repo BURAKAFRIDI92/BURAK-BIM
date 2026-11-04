@@ -8,10 +8,14 @@
   2. stages a clean copy of the package (no .git, bin/obj, dist/out, old Setup.exe files)
   3. creates dist\BURAK-BIM-<version>.zip
   4. builds dist\BURAK-BIM-Setup-<version>.exe with NSIS (unless -NoInstaller)
-  5. copies the standalone server exe to dist\ when .\out\server\BurakBim.Server.exe exists
+  5. creates dist\BURAK-BIM-<version>.zip (complete package incl. Setup.exe and BURAK-BIM.mcpb)
 
-  The installer itself builds the Revit / AutoCAD / Navisworks bridges on the user's PC against their own
-  Autodesk versions, so the bridges are NOT compiled here. CI only compile-checks them.
+  1.3: the package also carries
+    server\BurakBim.Server.exe   self-contained server (from .\out\server)
+    prebuilt\<host>\<year>\     bridges compiled in CI for every Revit / AutoCAD / Navisworks year (from .\out\prebuilt)
+    tools\roslyn\               offline C# compiler for versions without a prebuilt bridge (from .\out\tools\roslyn)
+    BURAK-BIM.mcpb              one-click Claude Desktop extension
+  so the installer works without internet and without build tools.
 
 .PARAMETER NoBuild      Skip 'dotnet publish' (CI already built .\out\server in an earlier step).
 .PARAMETER NoInstaller  Create only the ZIP, skip NSIS (useful on machines without NSIS).
@@ -51,7 +55,7 @@ Write-Host "BURAK BIM release packaging, version $Version"
 
 # ---------------------------------------------------------------- sanity check
 $required = @('LICENSE', 'README.md', 'AGENTS.md', 'CHANGELOG.md',
-              'installer/BurakBim.nsi', 'installer/install.ps1', 'installer/uninstall.ps1',
+              'installer/BurakBim.nsi', 'installer/BurakBimUninstaller.nsi', 'installer/README-INSTALL.txt', 'installer/install.ps1', 'installer/uninstall.ps1',
               'assets/burakbim.ico', 'assets/wizard.bmp', 'assets/header.bmp', 'src')
 foreach ($r in $required) {
     if (-not (Test-Path (Join-Path $Root $r))) { throw "Required path missing: $r" }
@@ -76,7 +80,7 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 try {
 Write-Step "Staging package"
 # top-level folders and file patterns that must not ship
-$skipDirs = '^(\.git|\.vs|\.idea|\.vscode|bin|obj|dist|out|refs|build)(/|$)'
+$skipDirs = '^(\.git|\.vs|\.idea|\.vscode|bin|obj|dist|out|refs|build|server|tools)(/|$)'
 $skipFiles = '(^|/)(BURAK-BIM-Setup-.*\.exe|.*\.user|.*\.suo)$'
 $rootFull = (Resolve-Path $Root).Path.TrimEnd('\', '/')
 $copied = 0
@@ -94,11 +98,56 @@ Get-ChildItem -Path $Root -Recurse -File -Force | ForEach-Object {
 }
 Write-Host "    staged $copied files"
 
+# 1.3 build outputs
+$serverExe = Join-Path $outServer 'BurakBim.Server.exe'
+
+# Optional Authenticode signing (removes SmartScreen "unknown publisher" warnings once the certificate has reputation).
+# Set SIGN_PFX (path to .pfx) and SIGN_PFX_PASSWORD, e.g. from GitHub secrets. Skipped when not set.
+function Invoke-Sign([string[]]$Files) {
+    if (-not $env:SIGN_PFX -or -not (Test-Path $env:SIGN_PFX)) { return }
+    $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match 'x64' } | Select-Object -Last 1
+    if (-not $signtool) { Write-Warning 'signtool.exe not found - files not signed'; return }
+    foreach ($f in $Files) {
+        & $signtool.FullName sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f $env:SIGN_PFX /p $env:SIGN_PFX_PASSWORD /d 'BURAK BIM' $f | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Warning "signing failed: $f" } else { Write-Host "    signed $([IO.Path]::GetFileName($f))" }
+    }
+}
+if (Test-Path $serverExe) {
+    Invoke-Sign (@($serverExe) + @(Get-ChildItem $outServer -Filter 'BurakBim.*.dll' | ForEach-Object { $_.FullName }))
+    # the server is a self-contained FOLDER (no self-extracting single file - nothing unpacks itself into %TEMP%)
+    Copy-Item $outServer (Join-Path $stage 'server') -Recurse -Force
+    Write-Host "    + server\ (self-contained, $(@(Get-ChildItem (Join-Path $stage 'server') -Recurse -File).Count) files)"
+} else { Write-Warning "out\server\BurakBim.Server.exe not found - the package will need a .NET SDK on the user's PC." }
+$outPre = Join-Path $Root 'out/prebuilt'
+if (Test-Path $outPre) {
+    Copy-Item (Join-Path $outPre '*') (Join-Path $stage 'prebuilt') -Recurse -Force
+    $n = @(Get-ChildItem (Join-Path $stage 'prebuilt') -Recurse -Filter 'BurakBim.Bridge.*.dll').Count
+    Write-Host "    + prebuilt bridges: $n"
+}
+$outRoslyn = Join-Path $Root 'out/tools/roslyn'
+if (Test-Path (Join-Path $outRoslyn 'csc.exe')) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $stage 'tools/roslyn') | Out-Null
+    Copy-Item (Join-Path $outRoslyn '*') (Join-Path $stage 'tools/roslyn') -Recurse -Force
+    Write-Host "    + tools\roslyn (offline compiler)"
+}
+
+# Claude Desktop extension (.mcpb = zip with manifest.json + server)
+New-Item -ItemType Directory -Force -Path $dist | Out-Null
+if (Test-Path $serverExe) {
+    $mcpbDir = Join-Path $stageRoot 'mcpb'
+    New-Item -ItemType Directory -Force -Path (Join-Path $mcpbDir 'server') | Out-Null
+    (Get-Content (Join-Path $Root 'installer/mcpb/manifest.json') -Raw).Replace('__VERSION__', $Version) | Set-Content (Join-Path $mcpbDir 'manifest.json') -Encoding ascii
+    Copy-Item (Join-Path $Root 'assets/burakbim-256.png') (Join-Path $mcpbDir 'icon.png')
+    Copy-Item (Join-Path $outServer '*') (Join-Path $mcpbDir 'server') -Recurse -Force
+    $mcpbZip = Join-Path $stageRoot 'BURAK-BIM.zip'
+    Compress-Archive -Path (Join-Path $mcpbDir '*') -DestinationPath $mcpbZip -Force
+    Copy-Item $mcpbZip (Join-Path $dist "BURAK-BIM-$Version.mcpb")
+    Copy-Item $mcpbZip (Join-Path $stage 'BURAK-BIM.mcpb')
+    Write-Host "    + BURAK-BIM.mcpb (Claude Desktop extension)"
+}
+
 # ---------------------------------------------------------------- 3. ZIP
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
-$zip = Join-Path $dist "BURAK-BIM-$Version.zip"
-Write-Step "Creating $([IO.Path]::GetFileName($zip))"
-Compress-Archive -Path $stage -DestinationPath $zip -Force
 
 # ---------------------------------------------------------------- 4. Setup.exe
 if (-not $NoInstaller) {
@@ -119,13 +168,35 @@ if (-not $NoInstaller) {
     & $Makensis "-DVERSION=$Version" "-DPKG=$stage" "-DOUTFILE=$setup" (Join-Path $stage 'installer/BurakBim.nsi')
     if ($LASTEXITCODE -ne 0) { throw "makensis failed (exit $LASTEXITCODE)" }
     if (-not (Test-Path $setup)) { throw "Setup.exe was not produced" }
+    Invoke-Sign @($setup)
+    # the complete ZIP also contains the installer at its top level
+    Copy-Item $setup (Join-Path $stage "BURAK-BIM-Setup-$Version.exe")
+
+    # standalone uninstaller + the small ZIP most users download: installer, uninstaller, guide, checksums
+    $uninstaller = Join-Path $stageRoot 'BURAK-BIM-Uninstaller.exe'
+    Write-Step "Building BURAK-BIM-Uninstaller.exe with NSIS"
+    & $Makensis "-DVERSION=$Version" "-DPKG=$stage" "-DOUTFILE=$uninstaller" (Join-Path $stage 'installer/BurakBimUninstaller.nsi')
+    if ($LASTEXITCODE -ne 0) { throw "makensis failed for the uninstaller (exit $LASTEXITCODE)" }
+    Invoke-Sign @($uninstaller)
+    Copy-Item $uninstaller (Join-Path $stage 'BURAK-BIM-Uninstaller.exe')
+
+    $kit = Join-Path $stageRoot 'kit'
+    New-Item -ItemType Directory -Force -Path $kit | Out-Null
+    Copy-Item $setup (Join-Path $kit 'BURAK-BIM-Installer.exe')
+    Copy-Item $uninstaller (Join-Path $kit 'BURAK-BIM-Uninstaller.exe')
+    Copy-Item (Join-Path $Root 'installer/README-INSTALL.txt') (Join-Path $kit 'README-INSTALL.txt')
+    Copy-Item (Join-Path $Root 'LICENSE') (Join-Path $kit 'LICENSE.txt')
+    if (Test-Path (Join-Path $stage 'BURAK-BIM.mcpb')) { Copy-Item (Join-Path $stage 'BURAK-BIM.mcpb') (Join-Path $kit 'BURAK-BIM.mcpb') }
+    $sums = Get-ChildItem $kit -File | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name }
+    Set-Content (Join-Path $kit 'SHA256SUMS.txt') $sums -Encoding ascii
+    Compress-Archive -Path (Join-Path $kit '*') -DestinationPath (Join-Path $dist "BURAK-BIM-Installer-$Version-win-x64.zip") -Force
 }
 
-# ---------------------------------------------------------------- 5. standalone server exe
-$serverExe = Join-Path $outServer 'BurakBim.Server.exe'
-if (Test-Path $serverExe) {
-    Copy-Item $serverExe (Join-Path $dist "BurakBim.Server-$Version-win-x64.exe")
-}
+# ---------------------------------------------------------------- 5. complete ZIP (Setup.exe + .mcpb + full package)
+$zip = Join-Path $dist "BURAK-BIM-$Version.zip"
+Write-Step "Creating $([IO.Path]::GetFileName($zip))"
+Compress-Archive -Path $stage -DestinationPath $zip -Force
+
 
 }
 finally {

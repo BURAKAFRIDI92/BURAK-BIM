@@ -10,6 +10,7 @@ using BurakBim.Shared;
 
 namespace BurakBim.Bridge
 {
+    using Json = BurakBim.Shared.Json;
     public static class Reflector
     {
         // ---------------- handle store ----------------

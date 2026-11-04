@@ -1,0 +1,33 @@
+{
+  "manifest_version": "0.3",
+  "name": "burak-bim",
+  "display_name": "BURAK BIM - BIM & AI Connector",
+  "version": "__VERSION__",
+  "description": "Control Revit, AutoCAD, Civil 3D, Navisworks, SAP2000, ETABS, CSiBridge, SAFE, Archicad, Bluebeam Revu and PlanSwift from Claude. Capture mode shows the model; computer control (with your permission) reaches every command.",
+  "long_description": "BURAK BIM is one MCP connector for the AEC software on your PC. It detects the installed products, sends you about 1,100 tools (modelling, documentation, clash detection, structural analysis and design, quantity takeoff), renders Revit views and any app window so the AI sees the result, and can operate the user interface with your on-screen approval when no API exists. For Revit, AutoCAD and Navisworks, also run BURAK-BIM-Installer.exe once: it installs the in-application bridges for versions 2022-2027.",
+  "author": { "name": "BURAK BIM", "url": "https://github.com/BURAKAFRIDI92/BURAK-BIM" },
+  "homepage": "https://github.com/BURAKAFRIDI92/BURAK-BIM",
+  "license": "Apache-2.0",
+  "icon": "icon.png",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/BurakBim.Server.exe",
+    "mcp_config": {
+      "command": "${__dirname}/server/BurakBim.Server.exe",
+      "args": [],
+      "env": { "BURAK_BIM_HOME": "${user_config.install_dir}" }
+    }
+  },
+  "user_config": {
+    "install_dir": {
+      "type": "directory",
+      "title": "BURAK BIM folder",
+      "description": "The folder where BURAK-BIM-Installer.exe installed BURAK BIM (default D:\\BURAK BIM). Leave it if you did not run the setup.",
+      "default": "D:\\BURAK BIM",
+      "required": false
+    }
+  },
+  "compatibility": { "platforms": ["win32"] },
+  "tools_generated": true,
+  "keywords": ["revit", "autocad", "civil3d", "navisworks", "bim", "etabs", "sap2000", "bluebeam", "planswift", "archicad"]
+}

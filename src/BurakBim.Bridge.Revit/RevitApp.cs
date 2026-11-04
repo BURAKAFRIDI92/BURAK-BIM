@@ -1,4 +1,4 @@
-// BURAK BIM - Revit bridge add-in (Revit 2022-2027).
+// BURAK BIM - Revit bridge add-in (Revit 2022-2027: .NET Framework 4.8 for 2022-2024, .NET 8 for 2025-2026, .NET 10 for 2027).
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -34,9 +34,12 @@ namespace BurakBim.Bridge.Revit
                 RevitCommands.Register(Server, Host);
                 RevitScan.Register(Server, Host);
                 RevitInspector.Register(Server, Host);
+                RevitCapture.Register(Server, Host);
                 application.ControlledApplication.DocumentChanged += Host.OnDocumentChanged;
-                CreateRibbon(application, here);
-                if (BurakConfig.AutoStart) Server.Start();
+                // 1.3: start the connector BEFORE building the ribbon, so a ribbon problem (tab name clash with another
+                // add-in, missing WPF image support, localized Revit) can never leave the AI without a connection.
+                if (BurakConfig.AutoStart) { try { Server.Start(); } catch (Exception ex) { BridgeLog.Write("Bridge start failed: " + ex); } }
+                try { CreateRibbon(application, here); } catch (Exception ex) { BridgeLog.Write("Ribbon creation failed (connector still running): " + ex.Message); }
             }
             catch (Exception ex)
             {

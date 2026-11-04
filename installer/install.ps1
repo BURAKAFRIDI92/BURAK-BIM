@@ -6,24 +6,28 @@
 
 .DESCRIPTION
   1. Picks the install folder (default D:\BURAK BIM - nothing large is written to C:).
-  2. Detects every installed Autodesk product and version.
-  3. Makes sure a .NET 8 SDK is available (private copy in <install>\tools\dotnet if needed).
-  4. Builds the BURAK BIM server and a bridge for EACH detected Revit / AutoCAD-family / Navisworks
-     version against that version's own API files.
+  2. Detects every installed Autodesk product and version (and CSI, Bluebeam, PlanSwift, Archicad ...).
+  3. 1.3: installs the PREBUILT server (self-contained, needs no .NET) and the PREBUILT bridge for each detected
+     Revit / AutoCAD-family / Navisworks version 2022-2027. No internet and no build tools are needed.
+  4. Only for a version without a prebuilt bridge: compiles it on this PC against that version's own API files
+     with the bundled offline C# compiler (tools\roslyn) - or, last resort, a .NET SDK.
   5. Registers the bridges (Revit .addin, Autodesk autoloader bundles) - Inventor/Robot use COM, no add-in.
-  6. Registers "BURAK-BIM" in AI clients: Claude Desktop, Claude Code, Codex, Cursor, Windsurf,
-     Google Antigravity, Gemini CLI, VS Code.
-  7. Installs the "BURAK BIM Sentinel" (runs at logon): new Autodesk versions installed later are
-     detected and connected automatically.
+  6. Registers "BURAK-BIM" in every AI client found: Claude Desktop (classic + Store), Claude Code, Codex,
+     Cursor, Windsurf, Google Antigravity, Gemini CLI, VS Code, Visual Studio, Cline, Roo, Kilo, LM Studio, Kiro,
+     Amazon Q, Trae, Continue, opencode (BurakBim.Server.exe --connect-clients; backups are kept).
+  7. Removes the "BURAK BIM Sentinel" logon task of older versions. With -Sentinel it installs the task instead,
+     so new Autodesk versions installed later are detected and connected automatically.
 
 .PARAMETER InstallDir   Install folder. Default: D:\BURAK BIM (falls back to another non-system drive, then %LOCALAPPDATA%).
 .PARAMETER Clients      auto (every detected client) | none | comma list:
                         claude-desktop,claude-code,codex,cursor,windsurf,antigravity,gemini,vscode
 .PARAMETER Rescan       Sentinel mode: only detect new software and build/register missing bridges.
 .PARAMETER Quiet        Less console output.
-.PARAMETER NoSentinel   Do not install the logon sentinel task.
+.PARAMETER Sentinel     Install the logon sentinel task (off by default).
+.PARAMETER NoSentinel   Kept for compatibility; the task is off unless -Sentinel is given.
 .PARAMETER SearchPaths  Extra folders that contain Autodesk software installed in custom places
                         (e.g. "D:\ALL PROGRAMS"). Remembered for later rescans.
+.PARAMETER LocalBuild   Ignore prebuilt bridges and compile every bridge on this PC.
 .PARAMETER WhatIf       Show what would be done, change nothing.
 
 .EXAMPLE
@@ -37,13 +41,15 @@ param(
     [string]$Clients = 'auto',
     [switch]$Rescan,
     [switch]$Quiet,
+    [switch]$Sentinel,
     [switch]$NoSentinel,
-    [string[]]$SearchPaths
+    [string[]]$SearchPaths,
+    [switch]$LocalBuild
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$BurakVersion = '1.2.0'
+$BurakVersion = '1.3.0'
 $RevitAddInId = '8E3B2F7A-4C1D-4B9E-A2F5-6D7C8B9A0E1F'
 $ServerName = 'BURAK-BIM'
 $Package = Split-Path -Parent $PSScriptRoot      # package root (contains src\, installer\, prebuilt\)
@@ -84,7 +90,7 @@ Write-Host " | __ )| | | |  _ \    / \  | |/ / | __ )_ _|  \/  |" -ForegroundCol
 Write-Host " |  _ \| | | | |_) |  / _ \ | ' /  |  _ \| || |\/| |" -ForegroundColor DarkCyan
 Write-Host " | |_) | |_| |  _ <  / ___ \| . \  | |_) | || |  | |" -ForegroundColor DarkCyan
 Write-Host " |____/ \___/|_| \_\/_/   \_\_|\_\ |____/___|_|  |_|  $BurakVersion" -ForegroundColor DarkCyan
-Write-Host "  One AI connector for Revit, AutoCAD, Civil 3D, Navisworks, Inventor, ReCap" -ForegroundColor Gray
+Write-Host "  One AI connector for Revit, AutoCAD, Civil 3D, Navisworks, SAP2000, ETABS, CSiBridge, SAFE, Archicad, Bluebeam, PlanSwift" -ForegroundColor Gray
 Write-Host "  Install folder: $InstallDir   Mode: $(if ($Rescan) {'rescan'} else {'install'})$(if ($WhatIfPreference) {' (WhatIf - no changes)'})"
 
 if (-not $WhatIfPreference) {
@@ -269,7 +275,7 @@ if ($Rescan) {
 if ($WhatIfPreference) {
     Write-Step 'WhatIf summary'
     Write-Info "Would copy BURAK BIM to $InstallDir, build server + bridges for: $(($bridgeTargets | ForEach-Object { $_.Key }) -join ', ')"
-    Write-Info "Would register AI clients: $Clients ; sentinel: $(-not $NoSentinel)"
+    Write-Info "Would register AI clients: $Clients ; sentinel: $($Sentinel -and -not $NoSentinel)"
     exit 0
 }
 
@@ -281,7 +287,7 @@ foreach ($sub in 'server', 'bridges', 'setup', 'tools', 'cache', 'config', 'runt
 Write-Utf8 (Join-Path $InstallDir 'burakbim.root') "BURAK BIM $BurakVersion install root"
 $setup = Join-Path $InstallDir 'setup'
 if ((Resolve-Path $Package).Path.TrimEnd('\') -ne (Resolve-Path $setup).Path.TrimEnd('\')) {
-    foreach ($item in 'src', 'installer', 'prebuilt', 'docs', 'assets', 'README.md', 'AGENTS.md', 'LICENSE', 'CHANGELOG.md') {
+    foreach ($item in 'src', 'installer', 'prebuilt', 'server', 'tools', 'docs', 'assets', 'README.md', 'AGENTS.md', 'LICENSE', 'CHANGELOG.md', 'BURAK-BIM.mcpb') {
         $from = Join-Path $Package $item
         if (Test-Path $from) { Copy-Item $from -Destination $setup -Recurse -Force }
     }
@@ -295,6 +301,17 @@ foreach ($ps in 'install.ps1', 'uninstall.ps1') {
 }
 $Src = Join-Path $setup 'src'
 Write-Ok "Package copied to $setup"
+
+# 1.3: files extracted from a downloaded ZIP carry the 'downloaded from the internet' mark. Revit / AutoCAD /
+# Navisworks (.NET Framework) then REFUSE to load the bridge DLLs ("Operation is not supported", 0x80131515) -
+# one of the reasons BURAK BIM worked on some PCs and not on others. Remove the mark from everything we install.
+function Unblock-Tree([string]$Path) {
+    if (-not (Test-Path $Path)) { return }
+    Get-ChildItem -LiteralPath $Path -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { try { Unblock-File -LiteralPath $_.FullName -ErrorAction Stop } catch { } }
+}
+Unblock-Tree $Package
+Unblock-Tree $setup
+Write-Ok 'Download marks removed (files can be loaded by Revit / AutoCAD / Navisworks)'
 
 New-Item -Path 'HKCU:\Software\BURAK BIM' -Force | Out-Null
 Set-ItemProperty -Path 'HKCU:\Software\BURAK BIM' -Name InstallDir -Value $InstallDir
@@ -336,14 +353,15 @@ function Get-Dotnet {
     return $private
 }
 
+# 1.3: the .NET SDK is only needed when something has to be compiled and the offline compiler is missing.
 $dotnet = $null
-try {
-    Write-Step 'Checking .NET 8 SDK (build tool)'
-    $dotnet = Get-Dotnet
-    Write-Ok "dotnet: $dotnet"
-} catch {
-    Write-Warn2 ("No .NET SDK: " + $_.Exception.Message + " - falling back to prebuilt binaries where available.")
+$existing = Get-Command dotnet -ErrorAction SilentlyContinue
+if ($existing) {
+    $sdks = & $existing.Source --list-sdks 2>$null | Out-String
+    if ($sdks -match '(?m)^(8|9|10)\.') { $dotnet = $existing.Source }
 }
+$privateDotnet = Join-Path $InstallDir 'tools\dotnet\dotnet.exe'
+if (-not $dotnet -and (Test-Path $privateDotnet)) { $dotnet = $privateDotnet }
 
 function Invoke-Build([string]$Project, [string[]]$Properties, [string]$Out, [switch]$Publish) {
     $bargs = @()
@@ -364,14 +382,114 @@ function Invoke-Build([string]$Project, [string[]]$Properties, [string]$Out, [sw
     }
 }
 
+# ------------------------------------------------------------------ 1.3: offline bridge compiler
+# Uses the bundled Roslyn compiler (tools\roslyn\csc.exe, runs on the .NET Framework 4.8 that every Windows has)
+# against the API DLLs of the INSTALLED product and the framework reference assemblies already on this PC.
+function Get-OfflineCsc {
+    foreach ($c in @((Join-Path $Package 'tools\roslyn\csc.exe'), (Join-Path $setup 'tools\roslyn\csc.exe'), (Join-Path $InstallDir 'tools\roslyn\csc.exe'))) { if (Test-Path $c) { return $c } }
+    return $null
+}
+
+function Get-NetCoreRefDirs([int]$Major) {
+    $dirs = @()
+    foreach ($root in @("$env:ProgramFiles\dotnet\shared")) {
+        foreach ($fw in 'Microsoft.NETCore.App', 'Microsoft.WindowsDesktop.App') {
+            $v = Get-ChildItem (Join-Path $root $fw) -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^$Major\." } | Sort-Object { [version]($_.Name -replace '-.*$', '') } -Descending | Select-Object -First 1
+            if ($v) { $dirs += $v.FullName }
+        }
+    }
+    return $dirs
+}
+
+function Invoke-OfflineBridgeBuild($t, [string]$Out) {
+    $csc = Get-OfflineCsc
+    if (-not $csc) { throw 'bundled compiler not present' }
+    $shared = Join-Path $setup 'prebuilt\_shared'
+    $proj = switch ($t.Family) { 'revit' { 'BurakBim.Bridge.Revit' } 'autocad' { 'BurakBim.Bridge.AutoCAD' } 'navisworks' { 'BurakBim.Bridge.Navisworks' } }
+    $netcore = ($t.Family -eq 'revit' -and $t.Year -ge 2025) -or ($t.Family -eq 'autocad' -and $t.Year -ge 2025)
+    $major = if ($t.Year -ge 2027) { 10 } else { 8 }
+    $defines = @('TRACE', 'BURAK_ROSLYN')
+    $refs = New-Object System.Collections.ArrayList
+    switch ($t.Family) {
+        'revit' {
+            $defines += "REVIT$($t.Year)"; if ($t.Year -ge 2024) { $defines += 'REVIT_LONG_IDS' }
+            foreach ($d in 'RevitAPI.dll', 'RevitAPIUI.dll') { [void]$refs.Add((Join-Path $t.Dir $d)) }
+        }
+        'autocad' { $defines += "ACAD$($t.Year)"; foreach ($d in 'accoremgd.dll', 'acdbmgd.dll', 'acmgd.dll') { [void]$refs.Add((Join-Path $t.Dir $d)) } }
+        'navisworks' { $defines += "NAVIS$($t.Year)"; [void]$refs.Add((Join-Path $t.Dir 'Autodesk.Navisworks.Api.dll')) }
+    }
+    foreach ($r in $refs) { if (-not (Test-Path $r)) { throw "missing $r" } }
+    $kind = if ($netcore) { 'netcore' } else { 'net48' }
+    $roslynDir = Join-Path $shared $kind
+    if (-not (Test-Path (Join-Path $roslynDir 'Microsoft.CodeAnalysis.dll'))) { throw "Roslyn libraries missing in $roslynDir" }
+    Get-ChildItem $roslynDir -Filter *.dll | ForEach-Object { [void]$refs.Add($_.FullName) }
+    $nostd = $false
+    if ($netcore) {
+        $fw = Get-NetCoreRefDirs $major
+        if ($fw.Count -lt 2) { throw ".NET $major desktop runtime not found (it is installed with Autodesk $($t.Year))" }
+        foreach ($d in $fw) { Get-ChildItem $d -Filter *.dll | Where-Object { $_.Name -notmatch '^(api-ms|mscordaccore|mscordbi|clrjit|coreclr|hostpolicy|Microsoft\.DiaSymReader|vcruntime|ucrtbase|D3DCompiler|PenImc|wpfgfx|PresentationNative)' } | ForEach-Object { [void]$refs.Add($_.FullName) } }
+        $defines += 'NETCOREAPP'; $defines += 'NET'; $nostd = $true
+    } else {
+        $fx = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
+        foreach ($d in 'mscorlib.dll', 'System.dll', 'System.Core.dll', 'System.Xml.dll', 'System.Xml.Linq.dll', 'System.Data.dll', 'Microsoft.CSharp.dll', 'System.Drawing.dll',
+                       'System.Windows.Forms.dll', 'System.Xaml.dll', 'System.Net.Http.dll', 'System.Numerics.dll', 'System.Runtime.Serialization.dll', 'netstandard.dll',
+                       'WPF\WindowsBase.dll', 'WPF\PresentationCore.dll', 'WPF\PresentationFramework.dll') {
+            $f = Join-Path $fx $d; if (Test-Path $f) { [void]$refs.Add($f) }
+        }
+        foreach ($f in (Get-ChildItem (Join-Path $fx 'Facades') -Filter *.dll -ErrorAction SilentlyContinue)) { [void]$refs.Add($f.FullName) }
+        $nostd = $true
+    }
+    $srcFiles = @()
+    $srcFiles += Get-ChildItem (Join-Path $Src 'Shared') -Filter *.cs
+    $srcFiles += Get-ChildItem (Join-Path $Src 'BurakBim.Bridge.Core') -Filter *.cs
+    $srcFiles += Get-ChildItem (Join-Path $Src $proj) -Filter *.cs
+    New-Item -ItemType Directory -Force -Path $Out | Out-Null
+    $rsp = Join-Path $LogDir "csc-$($t.Key).rsp"
+    $lines = @('/nologo', '/target:library', '/platform:x64', '/optimize+', '/langversion:latest', '/nowarn:CS0618,CS0219,CS1701,CS1702,CS8632,CS0168', '/noconfig')
+    if ($nostd) { $lines += '/nostdlib+' }
+    $lines += ('/define:' + ($defines -join ';'))
+    $lines += ('/out:"' + (Join-Path $Out "$proj.dll") + '"')
+    foreach ($r in ($refs | Select-Object -Unique)) { $lines += ('/reference:"' + $r + '"') }
+    if ($t.Family -eq 'revit') {
+        foreach ($png in 'burakbim-16.png', 'burakbim-32.png') { $pf = Join-Path $setup "assets\$png"; if (Test-Path $pf) { $lines += ('/resource:"' + $pf + '",brand.' + $png) } }
+    }
+    foreach ($f in $srcFiles) { $lines += ('"' + $f.FullName + '"') }
+    [IO.File]::WriteAllLines($rsp, $lines)
+    $log = Join-Path $LogDir "csc-$($t.Key).log"
+    $proc = Start-Process -FilePath $csc -ArgumentList "@`"$rsp`"" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+    if ($proc.ExitCode -ne 0) { $tail = (Get-Content $log -Tail 12 -ErrorAction SilentlyContinue) -join "`n"; throw "compile failed (see $log)`n$tail" }
+    $sharedDest = Join-Path $InstallDir 'bridges\_shared'
+    Copy-Item $shared (Join-Path $InstallDir 'bridges') -Recurse -Force
+    Unblock-Tree $sharedDest
+    return (Test-Path (Join-Path $Out "$proj.dll"))
+}
+
 # ------------------------------------------------------------------ server
 $ServerExe = Join-Path $InstallDir 'server\BurakBim.Server.exe'
 $ServerCommand = $ServerExe
 $ServerArgs = @()
 if (-not $Rescan -or -not (Test-Path $ServerExe)) {
-    Write-Step 'Building BURAK BIM server'
+    Write-Step 'Installing BURAK BIM server'
     $built = $false
-    if ($dotnet) {
+    Get-Process BurakBim.Server -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$InstallDir*" } | ForEach-Object {
+        Write-Info "Stopping running server (pid $($_.Id)) - restart your AI client afterwards"; try { Stop-Process -Id $_.Id -Force } catch { } }
+    Start-Sleep -Milliseconds 500
+    # 1.3: the release ships a self-contained server (no .NET runtime, no SDK, no internet needed)
+    foreach ($cand in @((Join-Path $Package 'server\BurakBim.Server.exe'), (Join-Path $setup 'server\BurakBim.Server.exe'))) {
+        if (-not $built -and (Test-Path $cand)) {
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'server') | Out-Null
+                Copy-Item $cand $ServerExe -Force
+                Unblock-Tree (Join-Path $InstallDir 'server')
+                $built = Test-Path $ServerExe
+                if ($built) { Write-Ok "Prebuilt server installed: $ServerExe" }
+            } catch { Write-Warn2 ("Could not copy the prebuilt server (is an AI client still using it? close it): " + $_.Exception.Message) }
+        }
+    }
+    if (-not $built -and -not $dotnet) {
+        try { $dotnet = Get-Dotnet; Write-Ok "dotnet: $dotnet" } catch { Write-Warn2 ("No .NET SDK: " + $_.Exception.Message) }
+    }
+    if (-not $built -and $dotnet) {
         try {
             Get-Process BurakBim.Server -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$InstallDir*" } | ForEach-Object {
                 Write-Info "Stopping running server (pid $($_.Id)) - restart your AI client afterwards"; Stop-Process -Id $_.Id -Force }
@@ -412,7 +530,27 @@ foreach ($t in $toBuild) {
     $out = Join-Path $InstallDir "bridges\$($t.Family)\$($t.Year)"
     if ((Get-RunningFamily $t.Family).Count -gt 0) { Write-Warn2 "$($t.Family) is running: close it if the $($t.Year) bridge files are locked. Restart it afterwards to load BURAK BIM." }
     $ok = $false
-    if ($dotnet) {
+    # 1) prebuilt bridge for this exact host/year (compiled in CI against that year's API)
+    $pre = Join-Path $setup "prebuilt\$($t.Family)\$($t.Year)"
+    if (-not $LocalBuild -and (Test-Path (Join-Path $pre "BurakBim.Bridge.*.dll"))) {
+        try {
+            New-Item -ItemType Directory -Force -Path $out | Out-Null
+            Copy-Item "$pre\*" $out -Recurse -Force
+            $shared = Join-Path $setup 'prebuilt\_shared'
+            if (Test-Path $shared) { Copy-Item $shared (Join-Path $InstallDir 'bridges') -Recurse -Force }
+            Unblock-Tree $out; Unblock-Tree (Join-Path $InstallDir 'bridges\_shared')
+            $ok = $true
+            Write-Ok "$($t.Key): prebuilt bridge installed"
+        } catch { Write-Warn2 ("$($t.Key): prebuilt copy failed (close the application if files are locked): " + $_.Exception.Message) }
+    }
+    # 2) offline compile with the bundled C# compiler against the installed product (no internet needed)
+    if (-not $ok) {
+        try { if (Invoke-OfflineBridgeBuild $t $out) { $ok = $true; Write-Ok "$($t.Key): bridge compiled on this PC (offline compiler)" } }
+        catch { Write-Info ("$($t.Key): offline compile not possible: " + $_.Exception.Message) }
+    }
+    # 3) .NET SDK build (downloads the SDK once if allowed)
+    if (-not $ok -and -not $dotnet) { try { $dotnet = Get-Dotnet } catch { Write-Warn2 ("No .NET SDK: " + $_.Exception.Message) } }
+    if (-not $ok -and $dotnet) {
         try {
             switch ($t.Family) {
                 'revit' { Invoke-Build (Join-Path $Src 'BurakBim.Bridge.Revit\BurakBim.Bridge.Revit.csproj') @("RevitYear=$($t.Year)", "RevitDir=$($t.Dir)") $out }
@@ -422,15 +560,7 @@ foreach ($t in $toBuild) {
             $ok = $true
         } catch { Write-Warn2 ("$($t.Key): " + $_.Exception.Message) }
     }
-    if (-not $ok) {
-        $pre = Join-Path $setup "prebuilt\$($t.Family)\$($t.Year)"
-        if (Test-Path $pre) {
-            New-Item -ItemType Directory -Force -Path $out | Out-Null
-            Copy-Item "$pre\*" $out -Recurse -Force; $ok = $true
-            Write-Warn2 "$($t.Key): using prebuilt bridge (C# scripting disabled until a full build succeeds)."
-        }
-    }
-    if (-not $ok) { continue }
+    if (-not $ok) { Write-Warn2 "$($t.Key): no bridge could be installed. This version still works through capture + computer control; re-run setup with internet access to compile it."; continue }
     $builtBridges += $t.Key
 
     switch ($t.Family) {
@@ -580,7 +710,17 @@ function Set-CodexEntry([string]$Path) {
     Write-Ok "Codex -> $Path"
 }
 
-if ((-not $Rescan) -and $Clients -ne 'none') {
+$clientsDone = $false
+if ((-not $Rescan) -and $Clients -ne 'none' -and (Test-Path $ServerExe) -and $ServerArgs.Count -eq 0) {
+    # 1.3: done by the server itself (strict JSON without BOM, verified, backups *.burakbim.bak)
+    Write-Step "Connecting AI clients ($Clients)"
+    $env:BURAK_BIM_HOME = $InstallDir
+    $out = & $ServerExe --home $InstallDir --connect-clients $Clients 2>&1
+    $out | ForEach-Object { Write-Info "$_" }
+    if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 2) { $clientsDone = $true }
+    Write-Info 'Restart each AI app (fully quit Claude Desktop from the tray icon). Claude Desktop users can also double-click BURAK-BIM.mcpb.'
+}
+if ((-not $Rescan) -and $Clients -ne 'none' -and -not $clientsDone) {
     Write-Step "Connecting AI clients ($Clients)"
     $want = @(); if ($Clients -ne 'auto') { $want = $Clients.Split(',') | ForEach-Object { $_.Trim().ToLower() } }
     function Want([string]$name, [bool]$detected) { if ($Clients -eq 'auto') { return $detected } return ($want -contains $name) }
@@ -625,7 +765,10 @@ if ((-not $Rescan) -and $Clients -ne 'none') {
 }
 
 # ------------------------------------------------------------------ sentinel + uninstall entry
-if ((-not $Rescan) -and (-not $NoSentinel)) {
+if ((-not $Rescan) -and (-not ($Sentinel -and -not $NoSentinel))) {
+    try { Unregister-ScheduledTask -TaskName 'BURAK BIM Sentinel' -Confirm:$false -ErrorAction Stop; Write-Ok 'Old logon task removed' } catch { }
+}
+if ((-not $Rescan) -and $Sentinel -and (-not $NoSentinel)) {
     Write-Step 'Installing BURAK BIM Sentinel (auto-connects Autodesk versions installed later)'
     try {
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"" + (Join-Path $setup 'install.ps1') + "`" -Rescan -Quiet -InstallDir `"$InstallDir`"")
@@ -654,6 +797,19 @@ $ErrorActionPreference = 'Continue'
 if (Test-Path $ServerExe) {
     $doc = & $ServerExe --doctor --home $InstallDir 2>&1
     if (-not $Quiet) { $doc | ForEach-Object { Write-Info $_ } }
+    # the exact handshake every AI client performs
+    try {
+        $req = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","clientInfo":{"name":"burak-installer","version":"1"},"capabilities":{}}}' + "`n" +
+               '{"jsonrpc":"2.0","method":"notifications/initialized"}' + "`n" + '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' + "`n"
+        $psi = New-Object Diagnostics.ProcessStartInfo $ServerExe
+        $psi.Arguments = "--home `"$InstallDir`""; $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+        $psi.CreateNoWindow = $true
+        $p = [Diagnostics.Process]::Start($psi)
+        $p.StandardInput.Write($req); $p.StandardInput.Close()
+        $outText = $p.StandardOutput.ReadToEnd(); [void]$p.WaitForExit(30000)
+        if ($outText -match '"serverInfo"' -and $outText -match '"tools"') { Write-Ok 'MCP handshake OK - AI clients can start and talk to BURAK BIM' }
+        else { Write-Warn2 'MCP handshake failed - see logs. Antivirus may be blocking BurakBim.Server.exe (allow it), then re-run setup.' }
+    } catch { Write-Warn2 ("MCP handshake could not run: " + $_.Exception.Message) }
 } elseif ($ServerArgs.Count -gt 0) {
     & $ServerCommand $ServerArgs[0] --doctor --home $InstallDir 2>&1 | ForEach-Object { Write-Info $_ }
 }

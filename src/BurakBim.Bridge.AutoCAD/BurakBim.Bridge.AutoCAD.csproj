@@ -6,10 +6,12 @@
     <AcadDir Condition="'$(AcadDir)' == ''">C:\Program Files\Autodesk\AutoCAD $(AcadYear)</AcadDir>
     <UseRoslyn Condition="'$(UseRoslyn)' == ''">true</UseRoslyn>
     <TargetFramework Condition="$(AcadYear) &lt; 2025">net48</TargetFramework>
-    <TargetFramework Condition="$(AcadYear) &gt;= 2025">net8.0-windows</TargetFramework>
+    <!-- 2025-2026: .NET 8 (an assembly built for .NET 8 also loads in AutoCAD 2026 Update 1.2+, which runs on .NET 10). 2027: .NET 10 -->
+    <TargetFramework Condition="$(AcadYear) &gt;= 2025 And $(AcadYear) &lt; 2027">net8.0-windows</TargetFramework>
+    <TargetFramework Condition="$(AcadYear) &gt;= 2027">net10.0-windows</TargetFramework>
     <AssemblyName>BurakBim.Bridge.AutoCAD</AssemblyName>
     <RootNamespace>BurakBim.Bridge.AutoCAD</RootNamespace>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <Company>BURAK BIM</Company>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
@@ -26,7 +28,7 @@
   <PropertyGroup Condition="'$(UseRoslyn)' == 'true'">
     <DefineConstants>$(DefineConstants);BURAK_ROSLYN</DefineConstants>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows' Or '$(TargetFramework)' == 'net10.0-windows'">
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 

@@ -74,7 +74,14 @@ function Remove-JsonEntry([string]$Path, [string]$Container) {
         }
     } catch { Write-Host "  [!] could not edit $Path : $($_.Exception.Message)" -ForegroundColor Yellow }
 }
-if (-not $KeepClients) {
+$exe = Join-Path $InstallDir 'server\BurakBim.Server.exe'
+$clientsDone = $false
+if (-not $KeepClients -and (Test-Path $exe)) {
+    # 1.3: the server removes its own entry from every AI client it knows (backups *.burakbim.bak)
+    & $exe --home $InstallDir --disconnect-clients 2>&1 | ForEach-Object { Write-Host "  $_" }
+    if ($LASTEXITCODE -eq 0) { $clientsDone = $true }
+}
+if (-not $KeepClients -and -not $clientsDone) {
     $h = $env:USERPROFILE
     Remove-JsonEntry (Join-Path $env:APPDATA 'Claude\claude_desktop_config.json') 'mcpServers'
     Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Packages') -Directory -Filter 'Claude_*' -ErrorAction SilentlyContinue | ForEach-Object {

@@ -23,6 +23,13 @@ public static class Config
         "maxPointsPerRequest", 400000,
         "inspectorName", "",
         "extraSearchPaths", new List<object>(),
+        // 1.3
+        "exposure", "auto",              // auto = each AI app's tool limit; full = everything
+        "captureMode", "changes",        // picture of the result after every change; "off" to disable
+        "captureMaxWidth", 1024,
+        "allowComputerControl", true,    // false = computer_* tools blocked for everybody
+        "httpPort", 8765,
+        "httpToken", "",
         "company", "BURAK BIM");
 
     public static Dictionary<string, object> Data

@@ -1,5 +1,44 @@
 # Test checklist (run before every release / on a new version)
 
+## 1.3 additions (run these first)
+
+### Automated (CI, every push)
+- [ ] `--selftest`: ALL TESTS PASSED.
+- [ ] `--mcp-selftest`: ALL MCP TESTS PASSED. This covers 14 AI-client profiles, tool limits, unique and valid names, and portable schemas.
+- [ ] stdio smoke test: every stdout line is valid JSON-RPC.
+- [ ] The prebuilt-bridges summary shows OK for Revit 2022-2027 (required). AutoCAD 2022-2027 and Navisworks are best effort: for a missing year, the installer compiles the bridge on the user's PC.
+
+### Install on a clean PC: no internet, no .NET, normal user
+- [ ] Unplug the network, run `BURAK-BIM-Setup-1.3.0.exe`, and check that the log shows *prebuilt bridge installed* for every detected version and *MCP handshake OK*.
+- [ ] Extract the ZIP with Explorer, so the files carry the download mark, then run `installer\install.ps1`. Revit 2022-2024 must still load the add-in.
+- [ ] `--list-clients` shows every installed AI app as connected. Open each config file: it is valid JSON, has no BOM, and has a `.burakbim.bak` next to it.
+
+### Each Revit version 2022, 2023, 2024, 2025, 2026, 2027
+- [ ] The BURAK BIM tab is present, and *Status* shows RUNNING and *Scripting: enabled*.
+- [ ] `revit_capture` (active view), `revit_capture view="Level 1"`, a section, a 3D view and a sheet all return images.
+- [ ] `revit_create kind=wall ...` returns the result **plus a capture** (capture mode on).
+- [ ] `script_run code="return doc.Title;"`.
+- [ ] With Dynamo opened first and then `script_run`, there is no MissingMethodException.
+
+### AI apps
+- [ ] Claude Desktop: `burak_status` and `revit_capture` work, and the image is shown in the chat.
+- [ ] Claude Desktop via `BURAK-BIM.mcpb`: install it, then call `burak_status`.
+- [ ] VS Code Copilot with other MCP servers enabled shows no "more than 128 tools" error.
+- [ ] Codex, Cursor, Antigravity, Gemini CLI and Windsurf each run `burak_status`, then `burak_tools query="clash"` and `burak_run`.
+
+### Computer control
+- [ ] Without permission, `computer_click` is refused with a clear message.
+- [ ] `computer_request_control`: the dialog appears on top, Yes shows the red banner, and No reports a decline to the AI.
+- [ ] `computer_screenshot grid=true` gives coordinates that `computer_click` hits exactly, at 100 %, 125 % and 150 % scaling and on a second monitor.
+- [ ] `computer_type` with non-English text, then Ctrl+Alt+Q: control stops and the next click is refused.
+
+### CSI / Bluebeam / PlanSwift
+- [ ] ETABS and SAP2000: `csi_status`, `csi_frames action=list`, `csi_analyze`, `csi_results kind=base_reactions`, `csi_call path=FrameObj.GetSection args=["1"]`.
+- [ ] CSiBridge and SAFE: `csi_status`, `csi_call path=GetModelFilename`.
+- [ ] Bluebeam: `bluebeam_markups` on a PDF with area, length and count markups, and `bluebeam_takeoff_summary` totals that match Revu's Markups List.
+- [ ] PlanSwift: `planswift_status`, `planswift_tree`, `planswift_quantities`.
+
+
 Run these in order. Record each result as PASS or FAIL, together with the product version.
 
 ## 0. Status of v1.0.0

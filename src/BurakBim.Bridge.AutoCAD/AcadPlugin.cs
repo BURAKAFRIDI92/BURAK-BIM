@@ -18,6 +18,7 @@ using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 
 namespace BurakBim.Bridge.AutoCAD
 {
+    using Json = BurakBim.Shared.Json;
     public sealed class AcadPlugin : IExtensionApplication
     {
         internal static BridgeServer Server;
