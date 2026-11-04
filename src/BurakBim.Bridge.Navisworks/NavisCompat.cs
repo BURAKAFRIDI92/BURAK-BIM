@@ -76,6 +76,17 @@ namespace BurakBim.Bridge.Navisworks
             Invoke(m, doc, ps.Length >= 3 ? new[] { path, Activator.CreateInstance(ps[1].ParameterType), properties } : new[] { path, properties });
         }
 
+        /// <summary>A comment with an author: a string before 2027, an Assignee in 2027.</summary>
+        public static Autodesk.Navisworks.Api.Comment NewComment(string body, Autodesk.Navisworks.Api.CommentStatus status, string author)
+        {
+            var ctor = typeof(Autodesk.Navisworks.Api.Comment).GetConstructors().First(c =>
+            {
+                var p = c.GetParameters();
+                return p.Length == 3 && p[0].ParameterType == typeof(string) && p[1].ParameterType == typeof(Autodesk.Navisworks.Api.CommentStatus);
+            });
+            return (Autodesk.Navisworks.Api.Comment)ctor.Invoke(new[] { body, status, ToParam(ctor.GetParameters()[2].ParameterType, author) });
+        }
+
         /// <summary>Picture of a view. 2024+ adds enableSectioning, and the result shows the view's active sections.</summary>
         public static dynamic ViewImage(object view, object style, int width, int height)
         {

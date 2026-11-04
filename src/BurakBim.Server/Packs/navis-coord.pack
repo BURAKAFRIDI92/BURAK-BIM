@@ -608,7 +608,7 @@ foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children)
   if (it.DisplayName == S("viewpoint"))
   {
       CommentStatus st; if (!Enum.TryParse(S("status", "New"), true, out st)) st = CommentStatus.New;
-      var cc = new CommentCollection(); foreach (Comment c in it.Comments) cc.Add(c); cc.Add(new Comment(S("body"), st, Environment.UserName));
+      var cc = new CommentCollection(); foreach (Comment c in it.Comments) cc.Add(c); cc.Add(NewComment(S("body"), st, Environment.UserName));
       doc.SavedViewpoints.EditComments(it, cc); return R("added", true);
   }
 Fail("Viewpoint not found"); return null;

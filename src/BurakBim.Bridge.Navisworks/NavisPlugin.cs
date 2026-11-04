@@ -239,6 +239,7 @@ namespace BurakBim.Bridge.Navisworks
         public void SetClashAssignee(object result, string name) { NavisCompat.SetAssignee(result, name); }
         public string AssigneeOf(object result) { return NavisCompat.AssigneeOf(result); }
         public void PublishNwd(string path, object properties) { NavisCompat.Publish(doc, path, properties); }
+        public Autodesk.Navisworks.Api.Comment NewComment(string body, Autodesk.Navisworks.Api.CommentStatus status, string author) { return NavisCompat.NewComment(body, status, author); }
         /// <summary>Picture of the active view, on every Navisworks year.</summary>
         public dynamic ViewImage(int width, int height) { return NavisCompat.ViewImage(doc.ActiveView, Autodesk.Navisworks.Api.ImageGenerationStyle.ScenePlusOverlay, width, height); }
         /// <summary>Clash test by name.</summary>

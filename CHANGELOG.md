@@ -9,6 +9,7 @@ Found in a live test on Navisworks Manage 2027, then checked by comparing the pu
 - **`BURAK-BIM-1.3.0-Complete.zip`** is the one file to share: a single folder with the installer, uninstaller, guide, Claude Desktop extension and checksums.
 - **Clash tools work on Navisworks 2027.** Autodesk removed `DocumentClashTests.Tests`, `TestsAddCopy(ClashTest)` and `TestsRemove(ClashTest)`. All clash tools now use `TestsRoot` and include tests inside folders. These members exist in 2022-2027.
 - **Setting clash status or assignee works on 2026 and 2027**, where Autodesk replaced the string with an `Assignee`.
+- **`navis_comment_add` works on 2027**, where a comment's author changed from a string to an `Assignee`.
 - **`navis_publish_nwd` works on 2026 and 2027**, where `PublishFile` needs `NwdExportOptions`.
 - **Navisworks images work on 2024 and later.** `navis_image_export`, `navis_viewpoint_images`, `navis_clash_report_html` and `navis_documentation_snapshot` used a `GenerateImage` call that Autodesk changed in 2024.
 - **`navis_select_by_property` compiles on every year.** Its greater and less comparisons used names that do not exist in the API.

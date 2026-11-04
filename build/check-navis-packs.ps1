@@ -27,7 +27,9 @@ $ErrorActionPreference = 'Stop'
 $work = Join-Path ([IO.Path]::GetTempPath()) "navis-packs-$Label"
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
-$tools = @((& $Server --packs-json) -join "`n" | ConvertFrom-Json | Where-Object { $_.host -eq 'navisworks' })
+# assigned first: Windows PowerShell 5.1 does not unroll a JSON array inside a pipeline
+$all = (& $Server --packs-json) -join "`n" | ConvertFrom-Json
+$tools = @($all | Where-Object { $_.host -eq 'navisworks' })
 $hasTimeliner = Test-Path (Join-Path $ApiDir 'Autodesk.Navisworks.Timeliner.dll')
 $hasClash = Test-Path (Join-Path $ApiDir 'Autodesk.Navisworks.Clash.dll')
 
