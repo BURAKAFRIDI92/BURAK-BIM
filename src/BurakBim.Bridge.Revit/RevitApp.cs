@@ -72,6 +72,9 @@ namespace BurakBim.Bridge.Revit
             { ToolTip = "Mark the selected AI-created elements as verified by you (inspector sign-off)." }));
             items.Add(review.AddItem(new PushButtonData("BurakBimReject", "Reject\nSelected", asm, typeof(RejectCommand).FullName)
             { ToolTip = "Mark the selected AI-created elements as rejected (needs rework)." }));
+            var about = app.CreateRibbonPanel(tab, "About");
+            items.Add(about.AddItem(new PushButtonData("BurakBimAbout", "About", asm, typeof(AboutCommand).FullName)
+            { ToolTip = "About BURAK BIM and contact details." }));
             // BURAK-BIM company logo on every button (loaded late-bound so the bridge builds without WPF reference assemblies)
             var large = BrandImage("brand.burakbim-32.png"); var small = BrandImage("brand.burakbim-16.png");
             foreach (var it in items)
@@ -123,6 +126,16 @@ namespace BurakBim.Bridge.Revit
                 }
                 catch { return true; }
             }
+        }
+    }
+
+    [Transaction(TransactionMode.Manual)]
+    public sealed class AboutCommand : IExternalCommand
+    {
+        public Result Execute(ExternalCommandData data, ref string message, ElementSet elements)
+        {
+            TaskDialog.Show("BURAK BIM", BurakInfo.AboutText);
+            return Result.Succeeded;
         }
     }
 

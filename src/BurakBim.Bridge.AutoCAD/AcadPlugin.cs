@@ -38,6 +38,7 @@ namespace BurakBim.Bridge.AutoCAD
                 Server = new BridgeServer(Host);
                 AcadCommands.Register(Server, Host);
                 Server.Start();
+                BurakRibbon.Keep(Host, BurakRibbon.CommonActions(Host, Server), Assembly.GetExecutingAssembly());
                 WriteLine("\nBURAK BIM connector running for " + Host.Product + " (type BURAKBIM for status).");
             }
             catch (System.Exception ex)
@@ -48,6 +49,7 @@ namespace BurakBim.Bridge.AutoCAD
 
         public void Terminate()
         {
+            BurakRibbon.Stop();
             try { if (Server != null) Server.Stop(); } catch { }
         }
 

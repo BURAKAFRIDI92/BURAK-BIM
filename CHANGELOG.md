@@ -1,9 +1,31 @@
 # Changelog
 
+## 1.3.0 update (2026-11-04) - Navisworks across every version, BURAK BIM tab
+
+Found in a live test on Navisworks Manage 2027, then checked by comparing the public API of Navisworks 2022-2027.
+
+- **BURAK BIM ribbon tab in Navisworks and in AutoCAD and every AutoCAD-based product.** Connection: Status, Reports, Logs. Navisworks also gets Coordination: Model Summary, Clash Summary, TimeLiner Summary.
+- **About section with contact details** on the BURAK BIM tab in Revit, AutoCAD and every AutoCAD-based product, and Navisworks.
+- **BURAK BIM tab in Inventor**, compiled during setup against the installed Inventor, and a **BURAK BIM panel in Rhino 7 and later**, because Rhino has no ribbon. Neither has been tested live yet.
+- **`BURAK-BIM-1.3.0-Complete.zip`** is the one file to share: a single folder with the installer, uninstaller, guide, Claude Desktop extension and checksums.
+- **Clash tools work on Navisworks 2027.** Autodesk removed `DocumentClashTests.Tests`, `TestsAddCopy(ClashTest)` and `TestsRemove(ClashTest)`. All clash tools now use `TestsRoot` and include tests inside folders. These members exist in 2022-2027.
+- **Setting clash status or assignee works on 2026 and 2027**, where Autodesk replaced the string with an `Assignee`.
+- **`navis_comment_add` works on 2027**, where a comment's author changed from a string to an `Assignee`.
+- **`navis_publish_nwd` works on 2026 and 2027**, where `PublishFile` needs `NwdExportOptions`. It now warns that Navisworks uses the published NWD as the open model.
+- **Setup's compiler uses only the references it was given.** `/noconfig` was in the response file, where the compiler ignores it, so .NET Framework DLLs could clash in a .NET 8 or .NET 10 compile.
+- **Newer Claude Desktop now connects.** It keeps its config in `%LOCALAPPDATA%\Claude-Data`, which setup did not know, so setup reported success while Claude never saw BURAK BIM. Setup also says so when Claude Desktop is not found.
+- **Claude Desktop from the Microsoft Store keeps its settings.** Setup created a private config holding only BURAK-BIM, which hid the user's other servers and preferences. A new private config now starts from the real one, and a config left by the earlier build is repaired.
+- **Setup restarts Claude Desktop itself**, after asking, because Claude only loads new connections when it starts. It asks you to save and close Revit, AutoCAD and Navisworks, and warns if Claude Desktop stays open.
+- **Upgrades from 1.2.** Setup now stops an older server running through `dotnet.exe`, and asks you to close your programs when a bridge file is in use.
+- **Navisworks images work on 2024 and later.** `navis_image_export`, `navis_viewpoint_images`, `navis_clash_report_html` and `navis_documentation_snapshot` used a `GenerateImage` call that Autodesk changed in 2024.
+- **`navis_select_by_property` greater and less work.** They used names that do not exist in the API, and a Navisworks search only matches values of the same data type. Numbers are now compared directly, including whole numbers, lengths, areas, volumes and angles.
+- **Read-only mode.** 30 Navisworks tools that change the model, view or files were marked read-only, so read-only mode did not block them.
+- **CI compiles every Navisworks tool** against the API of each year that has a public reference package, and fails on an error.
+
 ## 1.3.0 (2026-11-04) - works everywhere, sees the model, reaches every command
 
 ### Installer ZIP and fixes
-- **`BURAK-BIM-Installer-1.3.0-win-x64.zip`** is the download for most users: `BURAK-BIM-Installer.exe`, `BURAK-BIM-Uninstaller.exe`, a short guide, the Claude Desktop extension and SHA-256 checksums.
+- **`BURAK-BIM-1.3.0-Complete.zip`** is the download for most users: `BURAK-BIM-Installer.exe`, `BURAK-BIM-Uninstaller.exe`, a short guide, the Claude Desktop extension and SHA-256 checksums.
 - **Standalone uninstaller.** It finds the install folder from the registry and runs the uninstaller of the installed version, so it also removes older versions.
 - **Upgrades remove the old logon task.** The "BURAK BIM Sentinel" task from older versions ran hidden PowerShell at logon. 1.3 no longer creates it, and both install and uninstall now delete it.
 - **`bluebeam_script` works in folders with spaces**, including the default `D:\BURAK BIM`. The script path was passed without quotes.

@@ -177,6 +177,7 @@ System.IO.File.WriteAllText(S("path"), BurakBim.Shared.Json.Serialize(tree, true
 return R("path", S("path"), "nodes", count);
 
 @@ navis_exporters
+readonly: false
 title: List exporters / run exporter
 host: navisworks
 set: navisworks
@@ -195,6 +196,7 @@ var rc = plugin.Execute(S("path"));
 return R("exporter", rec.Id, "path", S("path"), "result", Convert.ToString(rc));
 
 @@ navis_plugins
+readonly: false
 title: Navisworks plug-ins and add-in commands
 host: navisworks
 set: navisworks
@@ -297,6 +299,7 @@ catch { ((dynamic)Autodesk.Navisworks.Api.ComApi.ComApiBridge.State).ZoomInCurVi
 return R("zoomed", items.Count);
 
 @@ navis_view_preset
+readonly: false
 title: Standard views / projection / render style
 host: navisworks
 set: navisworks
@@ -323,6 +326,7 @@ doc.CurrentViewpoint.CopyFrom(vp);
 return R("view", S("view"), "projection", vp.Projection.ToString(), "style", vp.RenderStyle.ToString());
 
 @@ navis_lighting
+readonly: false
 title: Lighting mode
 host: navisworks
 set: navisworks
@@ -336,6 +340,7 @@ doc.CurrentViewpoint.CopyFrom(vp);
 return R("lighting", vp.Lighting.ToString());
 
 @@ navis_file_ops
+readonly: false
 title: Append / merge / open / save / clear
 host: navisworks
 set: navisworks
@@ -357,6 +362,7 @@ switch (S("action"))
 return R("action", S("action"), "files", done, "models", doc.Models.Count);
 
 @@ navis_append_folder
+readonly: false
 title: Append every model in a folder
 host: navisworks
 set: navisworks
@@ -483,7 +489,7 @@ arg: top | integer | Top N (default 30)
 arg: includeResolved | boolean | Count resolved/approved too
 code:
 var counts = new Dictionary<ModelItem, int>();
-foreach (dynamic t in ClashDoc().TestsData.Tests)
+foreach (dynamic t in ClashTests())
     foreach (dynamic r in t.Children)
     {
         var list = new List<dynamic>();
@@ -505,7 +511,7 @@ desc: Counts active clashes per pair of source model files (e.g. STR.nwc x MEP.n
 code:
 Func<ModelItem, string> src = it => { var r = it; while (r != null && r.Parent != null) r = r.Parent; return r == null ? "?" : r.DisplayName; };
 var m = new Dictionary<string, int>();
-foreach (dynamic t in ClashDoc().TestsData.Tests)
+foreach (dynamic t in ClashTests())
     foreach (dynamic r in t.Children)
     {
         var list = new List<dynamic>();
@@ -539,7 +545,7 @@ foreach (dynamic c in list)
 {
     string st = c.Status.ToString(); if (st == "Resolved" || st == "Approved") continue;
     if (Has("modelFile")) { ModelItem a = c.Item1, b = c.Item2; if ((a == null || src(a).IndexOf(S("modelFile"), StringComparison.OrdinalIgnoreCase) < 0) && (b == null || src(b).IndexOf(S("modelFile"), StringComparison.OrdinalIgnoreCase) < 0)) continue; }
-    cd.TestsData.TestsEditResultAssignedTo(c, S("assignTo"));
+    SetClashAssignee(c, S("assignTo"));
     if (Has("comment")) { var cc = new CommentCollection(); foreach (Comment old in c.Comments) cc.Add(old); cc.Add(new Comment(S("comment"), CommentStatus.New)); cd.TestsData.TestsEditResultComments(c, cc); }
     n++;
 }
@@ -607,6 +613,7 @@ visit(tl.TasksRoot);
 return R("tasks", total, "start", start, "end", end, "withoutAttachedItems", unlinked, "finishedLate", late, "activeOn", when.ToString("yyyy-MM-dd"), "activeTasks", active.Take(100).ToList());
 
 @@ navis_documentation_snapshot
+readonly: false
 title: Coordination snapshot (images per viewpoint)
 host: navisworks
 set: navisworks
@@ -626,7 +633,7 @@ walk = (g, inside) =>
         if (s is GroupItem) { walk((GroupItem)s, inside || string.Equals(s.DisplayName, S("viewpointFolder"), StringComparison.OrdinalIgnoreCase)); continue; }
         var sv = s as SavedViewpoint; if (sv == null || (Has("viewpointFolder") && !inside)) continue;
         doc.SavedViewpoints.CurrentSavedViewpoint = sv;
-        var bmp = doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, I("width", 1600), I("height", 900));
+        var bmp = ViewImage(I("width", 1600), I("height", 900));
         var name = string.Join("_", sv.DisplayName.Split(System.IO.Path.GetInvalidFileNameChars()));
         var path = System.IO.Path.Combine(S("folder"), (done.Count + 1).ToString("000") + "_" + name + ".png");
         bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png); bmp.Dispose(); done.Add(path);

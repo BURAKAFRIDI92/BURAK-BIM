@@ -66,6 +66,7 @@ switch (S("mode"))
 return R("mode", S("mode"), "items", items.Count);
 
 @@ navis_compare_models
+readonly: false
 title: Compare two models (revision check)
 host: navisworks
 set: navisworks
@@ -157,6 +158,7 @@ if (B("select")) doc.CurrentSelection.CopyFrom(res);
 return R("found", res.Count, "items", DescAll(res, I("limit", 200)));
 
 @@ navis_plan_cut
+readonly: false
 title: Plan cut at a level / elevation
 host: navisworks
 set: navisworks
@@ -182,6 +184,7 @@ if (Has("saveAs")) { var sv = new SavedViewpoint(doc.CurrentViewpoint.CreateCopy
 return R("bottom", z0, "top", z1, "saved", S("saveAs"));
 
 @@ navis_issue_viewpoints
+readonly: false
 title: One viewpoint per item (issue views)
 host: navisworks
 set: navisworks
@@ -208,6 +211,7 @@ foreach (ModelItem it in Items())
 return R("folder", folder.DisplayName, "viewpoints", names);
 
 @@ navis_clash_select_items
+readonly: false
 title: Clash: select clashing items
 host: navisworks
 set: navisworks
@@ -229,6 +233,7 @@ if (B("colorize")) doc.Models.OverridePermanentColor(items, new Color(0.9, 0.1, 
 return R("items", items.Count);
 
 @@ navis_clash_auto_approve
+readonly: false
 title: Clash: approve / resolve small clashes
 host: navisworks
 set: navisworks
@@ -246,13 +251,14 @@ var all = new List<dynamic>(); foreach (dynamic c in t.Children) { if ((bool)c.I
 foreach (var r in all)
 {
     if (Math.Abs((double)r.Distance) * ToMm >= N("belowMm")) continue;
-    data.TestsEditResultStatus(r, (dynamic)to);
+    SetClashStatus(r, to);
     if (Has("comment")) { var cc = new CommentCollection(); foreach (Comment old in r.Comments) cc.Add(old); cc.Add(new Comment(S("comment"), CommentStatus.New)); data.TestsEditResultComments(r, cc); }
     n++;
 }
 return R("updated", n, "status", S("toStatus", "Approved"));
 
 @@ navis_clash_rename_by_location
+readonly: false
 title: Clash: rename by level and grid
 host: navisworks
 set: navisworks
@@ -273,6 +279,7 @@ foreach (var r in all)
 return R("renamed", n);
 
 @@ navis_timeliner_import_csv
+readonly: false
 title: TimeLiner: create tasks from CSV
 host: navisworks
 set: navisworks
@@ -331,6 +338,7 @@ System.IO.File.WriteAllText(S("path"), sb.ToString());
 return R("path", S("path"), "tasks", n);
 
 @@ navis_sets_from_levels
+readonly: false
 title: Search sets per level
 host: navisworks
 set: navisworks

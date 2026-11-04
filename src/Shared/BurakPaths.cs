@@ -11,6 +11,7 @@ namespace BurakBim.Shared
         public const string Version = "1.3.0";
         public const string Vendor = "BURAK BIM";
         public const string RegistryKey = @"Software\BURAK BIM";
+        public const string AboutText = ProductName + " " + Version + "\n\nContact\nWhatsApp: +923189848904\nLinkedIn: Iftikhar Khan";
         /// <summary>Wire protocol version between server and host bridges.</summary>
         public const int BridgeProtocol = 1;
     }

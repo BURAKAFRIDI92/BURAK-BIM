@@ -162,6 +162,33 @@ jobs:
           Copy-Item "$pkg/*" out/tools/roslyn -Recurse -Force
           Get-ChildItem out/tools/roslyn -Recurse -Include *.pdb,*.xml | Remove-Item -Force
 
+      - name: Rhino panel plug-in
+        shell: pwsh
+        run: |
+          dotnet build src/BurakBim.Plugin.Rhino/BurakBim.Plugin.Rhino.csproj -c Release -o out/rhino-build
+          if ($LASTEXITCODE -ne 0) { throw "Rhino plug-in failed to compile" }
+          New-Item -ItemType Directory -Force out/prebuilt/rhino | Out-Null
+          Copy-Item out/rhino-build/BurakBim.Rhino.rhp out/prebuilt/rhino/
+          Get-ChildItem out/prebuilt/rhino | ForEach-Object { "$($_.Name) $($_.Length)" }
+
+      - name: Compile every Navisworks tool against each year's API
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $failed = @()
+          foreach ($v in @(@('2022', '2022.0.6'), @('2023', '2023.0.7'), @('2024', '2024.0.0'), @('2025', '2025.0.0'), @('2026', '2026.0.0'))) {
+            $api = Join-Path $PWD.Path "refs/navis$($v[0])-dlls"
+            $pkg = Join-Path $PWD.Path "refs/clash$($v[0]).zip"
+            Invoke-WebRequest -UseBasicParsing "https://api.nuget.org/v3-flatcontainer/chuongmep.navis.api.autodesk.navisworks.clash/$($v[1])/chuongmep.navis.api.autodesk.navisworks.clash.$($v[1]).nupkg" -OutFile $pkg
+            $zip = [IO.Compression.ZipFile]::OpenRead($pkg)
+            foreach ($e in $zip.Entries | Where-Object { $_.Name -eq 'Autodesk.Navisworks.Clash.dll' }) { [IO.Compression.ZipFileExtensions]::ExtractToFile($e, (Join-Path $api $e.Name), $true) }
+            $zip.Dispose()
+            ./build/check-navis-packs.ps1 -Csc out/tools/roslyn/csc.exe -Server out/server/BurakBim.Server.exe -Bridge "out/prebuilt/navisworks/$($v[0])/BurakBim.Bridge.Navisworks.dll" -ApiDir $api -Label $v[0]
+            if ($LASTEXITCODE -ne 0) { $failed += $v[0] }
+          }
+          $global:LASTEXITCODE = 0
+          if ($failed.Count -gt 0) { throw "Navisworks tools with compile errors in: $($failed -join ', ')" }
+
       # Optional code signing: add repository secrets SIGN_PFX_BASE64 (base64 of a .pfx code-signing certificate)
       # and SIGN_PFX_PASSWORD. Without them the build is unsigned (Windows SmartScreen shows "unknown publisher").
       - name: Package ZIP + Setup.exe + Claude Desktop extension
@@ -181,10 +208,13 @@ jobs:
       - name: Install and uninstall test (the ZIP users download, silent, clean Windows)
         shell: pwsh
         run: |
-          $zip = Get-ChildItem dist -Filter 'BURAK-BIM-Installer-*-win-x64.zip' | Select-Object -First 1
-          if (-not $zip) { throw "installer ZIP was not produced" }
-          $kit = Join-Path $env:RUNNER_TEMP 'kit'
-          Expand-Archive $zip.FullName $kit -Force
+          $zip = Get-ChildItem dist -Filter 'BURAK-BIM-*-Complete.zip' | Select-Object -First 1
+          if (-not $zip) { throw "complete ZIP was not produced" }
+          $unzipped = Join-Path $env:RUNNER_TEMP 'kit'
+          Expand-Archive $zip.FullName $unzipped -Force
+          $top = @(Get-ChildItem $unzipped)
+          if ($top.Count -ne 1 -or -not $top[0].PSIsContainer) { throw "the ZIP must hold exactly one folder" }
+          $kit = $top[0].FullName
           foreach ($f in 'BURAK-BIM-Installer.exe', 'BURAK-BIM-Uninstaller.exe', 'README-INSTALL.txt', 'SHA256SUMS.txt') { if (-not (Test-Path (Join-Path $kit $f))) { throw "$f missing from the ZIP" } }
           foreach ($line in Get-Content (Join-Path $kit 'SHA256SUMS.txt')) {
             $hash, $name = $line -split '\s+', 2
@@ -203,10 +233,47 @@ jobs:
               if (-not (Test-Path (Join-Path $dir "setup\prebuilt\$($b[0])\$y\BurakBim.Bridge.$($b[1]).dll"))) { throw "prebuilt bridge missing from the installer: $($b[0]) $y" }
             }
           }
+          # Store-app Claude Desktop: a new private config must keep the real one's servers and preferences
+          $real = Join-Path $env:APPDATA 'Claude'; New-Item -ItemType Directory -Force $real | Out-Null
+          Set-Content (Join-Path $real 'claude_desktop_config.json') '{"preferences":{"keep":true},"mcpServers":{"other":{"command":"other.exe"}}}' -Encoding ascii
+          $pkg = Join-Path $env:LOCALAPPDATA 'Packages\Claude_citest'; $store = Join-Path $pkg 'LocalCache\Roaming\Claude'; New-Item -ItemType Directory -Force $store | Out-Null
+          $storeCfg = Join-Path $store 'claude_desktop_config.json'
+          foreach ($case in 'new private config', 'private config left by 1.3.0') {
+            if ($case -like 'new*') { Remove-Item $storeCfg -ErrorAction SilentlyContinue } else { Set-Content $storeCfg '{"mcpServers":{"BURAK-BIM":{"command":"x"}}}' -Encoding ascii }
+            & $exe --home $dir --connect-clients claude-desktop | Out-Null
+            $c = Get-Content $storeCfg -Raw | ConvertFrom-Json
+            if (-not $c.mcpServers.other -or -not $c.mcpServers.'BURAK-BIM' -or -not $c.preferences.keep) { throw "Store config lost data: $case" }
+            Write-Host "Store config kept the user's data: $case"
+          }
+          Remove-Item $pkg -Recurse -Force
+
+          # newer Claude Desktop: its config is in %LOCALAPPDATA%\Claude-Data, and nothing should be created in the older places
+          $newer = Join-Path $env:LOCALAPPDATA 'Claude-Data\claude_citest'; New-Item -ItemType Directory -Force $newer | Out-Null
+          $newerCfg = Join-Path $newer 'claude_desktop_config.json'
+          Set-Content $newerCfg '{"preferences":{"keep":true},"mcpServers":{"other":{"command":"other.exe"}}}' -Encoding ascii
+          Remove-Item (Join-Path $env:APPDATA 'Claude\claude_desktop_config.json') -ErrorAction SilentlyContinue
+          & $exe --home $dir --connect-clients claude-desktop | Out-Null
+          $c = Get-Content $newerCfg -Raw | ConvertFrom-Json
+          if (-not $c.mcpServers.'BURAK-BIM' -or -not $c.mcpServers.other -or -not $c.preferences.keep) { throw "the Claude-Data config was not connected correctly" }
+          if (Test-Path (Join-Path $env:APPDATA 'Claude\claude_desktop_config.json')) { throw "an older Claude config was created beside Claude-Data" }
+          Write-Host "Claude-Data config connected and kept the user's data"
+          Remove-Item (Join-Path $env:LOCALAPPDATA 'Claude-Data') -Recurse -Force
+
+          # the contact details reach every tab
+          foreach ($file in 'revit\2024\BurakBim.Bridge.Revit.dll', 'autocad\2024\BurakBim.Bridge.AutoCAD.dll', 'navisworks\2024\BurakBim.Bridge.Navisworks.dll', 'rhino\BurakBim.Rhino.rhp') {
+            $b = @($file)
+            $dll = [IO.File]::ReadAllBytes((Join-Path $dir "setup\prebuilt\$file"))
+            $latin = [Text.Encoding]::GetEncoding(28591)
+            if (-not $latin.GetString($dll).Contains($latin.GetString([Text.Encoding]::Unicode.GetBytes('+923189848904')))) { throw "About text missing from the $($b[0]) bridge" }
+          }
           foreach ($f in 'setup\prebuilt\_shared\net48', 'setup\prebuilt\_shared\netcore', 'setup\tools\roslyn\csc.exe', 'setup\src\BurakBim.Bridge.Navisworks') { if (-not (Test-Path (Join-Path $dir $f))) { throw "$f missing from the installer" } }
           Get-ChildItem (Join-Path $dir 'logs') -Filter 'install-*.log' | Get-Content | Write-Host
           # the compiler setup uses for versions without a prebuilt bridge, on each kind of host runtime
-          foreach ($t in @(@('navisworks', 2026, 'navis2026'), @('revit', 2024, 'revit2024'), @('revit', 2026, 'revit2026'), @('autocad', 2024, 'acad2024'), @('autocad', 2027, 'acad2027'))) {
+          # Inventor: compiled against a stand-in, because Autodesk's interop is not on NuGet (see build/stubs)
+          New-Item -ItemType Directory -Force refs/inventor-stub-dlls | Out-Null
+          & out/tools/roslyn/csc.exe /nologo /target:library /platform:x64 /out:refs/inventor-stub-dlls/Autodesk.Inventor.Interop.dll build/stubs/InventorInteropStub.cs
+          if ($LASTEXITCODE -ne 0) { throw "Inventor stand-in failed to compile" }
+          foreach ($t in @(@('navisworks', 2026, 'navis2026'), @('revit', 2024, 'revit2024'), @('revit', 2026, 'revit2026'), @('autocad', 2024, 'acad2024'), @('autocad', 2027, 'acad2027'), @('inventor', 2024, 'inventor-stub'), @('inventor', 2026, 'inventor-stub'))) {
             $api = Join-Path $PWD.Path "refs/$($t[2])-dlls"
             $to = Join-Path $env:RUNNER_TEMP "compiled/$($t[0])/$($t[1])"
             & $exe --home $dir --compile-bridge $t[0] $t[1] $api $to | Write-Host

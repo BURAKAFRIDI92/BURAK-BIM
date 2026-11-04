@@ -49,6 +49,30 @@ public static class ClientConnector
         return l;
     }
 
+    /// <summary>
+    /// Newer Claude Desktop keeps its data in %LOCALAPPDATA%\Claude-Data\claude_&lt;id&gt; instead of %APPDATA%\Claude.
+    /// Claude has moved it before, so any existing config in a Claude folder there counts, one level down at most.
+    /// Claude-3p is a separate mode with its own settings and is left alone.
+    /// </summary>
+    static List<string> ClaudeDataDirs()
+    {
+        var dirs = new List<string>();
+        try
+        {
+            var data = P(LocalAppData, "Claude-Data");
+            if (D(data)) dirs.AddRange(Directory.GetDirectories(data, "claude*"));
+            foreach (var top in Directory.GetDirectories(LocalAppData, "Claude*"))
+            {
+                var name = Path.GetFileName(top);
+                if (name.Equals("Claude-Data", StringComparison.OrdinalIgnoreCase) || name.Equals("Claude-3p", StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var d in new[] { top }.Concat(Directory.GetDirectories(top)))
+                    if (F(P(d, "claude_desktop_config.json"))) dirs.Add(d);
+            }
+        }
+        catch { }
+        return dirs;
+    }
+
     /// <summary>globalStorage folders of VS Code-family editors (for Cline / Roo / Kilo extensions).</summary>
     static IEnumerable<string> EditorUserDirs()
     {
@@ -64,11 +88,13 @@ public static class ClientConnector
         new Target { Id = "claude-desktop", Label = "Claude Desktop", Kind = "mcpServers",
             Files = () =>
             {
-                var l = new List<string> { P(AppData, "Claude", "claude_desktop_config.json") };
-                l.AddRange(MsixClaudeDirs().Select(d => P(d, "claude_desktop_config.json")));
-                return l;
+                var older = new List<string> { P(AppData, "Claude", "claude_desktop_config.json") };
+                older.AddRange(MsixClaudeDirs().Select(d => P(d, "claude_desktop_config.json")));
+                var current = ClaudeDataDirs().Select(d => P(d, "claude_desktop_config.json")).ToList();
+                // a PC on the newer location only needs older files kept in step if they already exist
+                return current.Count == 0 ? older : current.Concat(older.Where(F)).ToList();
             },
-            Installed = () => D(P(AppData, "Claude")) || D(P(LocalAppData, "AnthropicClaude")) || MsixClaudeDirs().Count > 0,
+            Installed = () => ClaudeDataDirs().Count > 0 || D(P(AppData, "Claude")) || D(P(LocalAppData, "Claude")) || D(P(LocalAppData, "AnthropicClaude")) || MsixClaudeDirs().Count > 0,
             Note = "Fully quit Claude Desktop (tray icon > Quit) and start it again. Or install the one-click extension BURAK-BIM.mcpb." },
         new Target { Id = "claude-code", Label = "Claude Code (user scope)", Kind = "mcpServers",
             Files = () => new() { P(Home, ".claude.json") },
@@ -232,7 +258,8 @@ public static class ClientConnector
                 updated = "name: BURAK BIM\nversion: " + BurakInfo.Version + "\nschema: v1\nmcpServers:\n  - name: " + ServerKey + "\n    command: '" + exe.Replace("'", "''") + "'\n    args: []\n    env:\n      BURAK_BIM_HOME: '" + BurakPaths.Root.Replace("'", "''") + "'\n";
                 break;
             default:
-                var root = original.Trim().Length == 0 ? new Dictionary<string, object>() : ParseLenient(original, file);
+                var start = add ? SeedStoreConfig(file, original) : original;
+                var root = start.Trim().Length == 0 ? new Dictionary<string, object>() : ParseLenient(start, file);
                 var container = kind switch { "servers" => "servers", "opencode" => "mcp", "zed" => "context_servers", _ => "mcpServers" };
                 if (Json.Get(root, container) is not Dictionary<string, object> servers)
                 {
@@ -270,6 +297,22 @@ public static class ClientConnector
         File.Copy(tmp, file, true);
         File.Delete(tmp);
         return true;
+    }
+
+    /// <summary>
+    /// The Microsoft Store app prefers a config in its private folder over the one in %APPDATA%. A new private config must
+    /// therefore start from the real one, or it hides the user's other servers and preferences. 1.3.0 left a private config
+    /// holding only our entry, so that exact case is repaired too. A private config with anything else in it is left alone.
+    /// </summary>
+    static string SeedStoreConfig(string file, string original)
+    {
+        if (file.IndexOf(@"\LocalCache\Roaming\Claude\", StringComparison.OrdinalIgnoreCase) < 0) return original;
+        var real = P(AppData, "Claude", "claude_desktop_config.json");
+        if (!File.Exists(real)) return original;
+        if (original.Trim().Length == 0) return File.ReadAllText(real);
+        var current = ParseLenient(original, file);
+        bool onlyOurs = current.Count == 1 && Json.Get(current, "mcpServers") is Dictionary<string, object> s && s.Count == 1 && s.ContainsKey(ServerKey);
+        return onlyOurs ? File.ReadAllText(real) : original;
     }
 
     static void Backup(string file)

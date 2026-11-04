@@ -16,6 +16,7 @@ if (Has("saveAs")) { var sv = new SavedViewpoint(doc.CurrentViewpoint.CreateCopy
 return R("zoomed", items.Count);
 
 @@ navis_camera
+readonly: false
 title: Get / set camera
 host: navisworks
 set: navisworks
@@ -54,6 +55,7 @@ while (stack.Count > 0)
 return r;
 
 @@ navis_viewpoint_folder
+readonly: false
 title: Viewpoint folder & organise
 host: navisworks
 set: navisworks
@@ -85,6 +87,7 @@ foreach (var it in del) doc.SavedViewpoints.Remove(doc.SavedViewpoints.RootItem,
 return R("deleted", del.Count);
 
 @@ navis_viewpoint_rename
+readonly: false
 title: Rename viewpoint
 host: navisworks
 set: navisworks
@@ -109,7 +112,7 @@ arg: height | integer | Height px (default 1080)
 arg: path | string | Output .png (default exports folder)
 code:
 if (Has("viewpoint")) foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children) if (it.DisplayName == S("viewpoint")) doc.SavedViewpoints.CurrentSavedViewpoint = (SavedViewpoint)it;
-var bmp = doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, I("width", 1920), I("height", 1080));
+var bmp = ViewImage(I("width", 1920), I("height", 1080));
 var path = S("path") ?? System.IO.Path.Combine(BurakBim.Shared.BurakPaths.Sub("exports", "navisworks"), "view-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png");
 bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
 return R("image", path);
@@ -129,12 +132,13 @@ var folder = S("folder") ?? BurakBim.Shared.BurakPaths.Sub("exports", "naviswork
 foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children)
 {
     var sv = it as SavedViewpoint; if (sv == null) continue; doc.SavedViewpoints.CurrentSavedViewpoint = sv;
-    var bmp = doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, I("width", 1600), I("height", 900));
+    var bmp = ViewImage(I("width", 1600), I("height", 900));
     var f = System.IO.Path.Combine(folder, string.Concat(sv.DisplayName.Split(System.IO.Path.GetInvalidFileNameChars())) + ".png"); bmp.Save(f, System.Drawing.Imaging.ImageFormat.Png); files.Add(f);
 }
 return R("folder", folder, "images", files);
 
 @@ navis_section_box
+readonly: false
 title: Sectioning (box / clip planes)
 host: navisworks
 set: navisworks
@@ -186,6 +190,7 @@ while (stack.Count > 0)
 return r;
 
 @@ navis_selection_set_create
+readonly: false
 title: Create selection / search set
 host: navisworks
 set: navisworks
@@ -230,6 +235,7 @@ if (B("isolate"))
 return R("selected", items.Count);
 
 @@ navis_sets_by_property
+readonly: false
 title: Search sets for every value
 host: navisworks
 set: navisworks
@@ -276,7 +282,7 @@ foreach (var a in SL("groupA")) foreach (var b in SL("groupB"))
     test.Tolerance = N("tolerance", 0);
     test.SelectionA.Selection.CopyFrom(Find(S("category"), S("property"), a));
     test.SelectionB.Selection.CopyFrom(Find(S("category"), S("property"), b));
-    data.TestsAddCopy(test); made.Add(a + " vs " + b);
+    AddClashTest(test); made.Add(a + " vs " + b);
 }
 if (B("run", true)) data.TestsRunAllTests();
 return R("tests", made);
@@ -289,7 +295,7 @@ tx: false
 desc: Every clash test with totals by status (New/Active/Reviewed/Approved/Resolved) plus grand totals - coordination meeting summary.
 code:
 var totals = new Dictionary<string, int>(); var tests = new List<object>();
-foreach (dynamic t in ClashDoc().TestsData.Tests)
+foreach (dynamic t in ClashTests())
 {
     var counts = new Dictionary<string, object>(); int n = 0;
     foreach (dynamic c in t.Children)
@@ -325,6 +331,7 @@ foreach (dynamic c in Test(S("test")).Children)
 return res.OrderByDescending(k => k.Value).ToDictionary(k => k.Key, k => (object)k.Value);
 
 @@ navis_clash_viewpoint
+readonly: false
 title: Zoom to a clash
 host: navisworks
 set: navisworks
@@ -385,7 +392,7 @@ var all = new List<dynamic>(); foreach (dynamic c in test.Children) { if ((bool)
 foreach (var r in all)
 {
     if (Has("fromStatus") && !string.Equals((string)r.Status.ToString(), S("fromStatus"), StringComparison.OrdinalIgnoreCase)) continue;
-    data.TestsEditResultStatus(r, (dynamic)to); if (Has("assignedTo")) data.TestsEditResultAssignedTo(r, S("assignedTo")); n++;
+    SetClashStatus(r, to); if (Has("assignedTo")) SetClashAssignee(r, S("assignedTo")); n++;
 }
 return R("updated", n);
 
@@ -399,7 +406,7 @@ arg: test | string | Test name (default all)
 arg: path | string | Output .csv
 code:
 var sb = new System.Text.StringBuilder("Test,Clash,Status,Distance mm,X,Y,Z,Item 1,Item 2,Assigned To,Created\n");
-foreach (dynamic t in ClashDoc().TestsData.Tests)
+foreach (dynamic t in ClashTests())
 {
     if (Has("test") && (string)t.DisplayName != S("test")) continue;
     var all = new List<dynamic>(); foreach (dynamic c in t.Children) { if ((bool)c.IsGroup) foreach (dynamic r in c.Children) all.Add(r); else all.Add(c); }
@@ -408,7 +415,7 @@ foreach (dynamic t in ClashDoc().TestsData.Tests)
         string i1 = "", i2 = ""; try { i1 = PathOf(r.Item1); i2 = PathOf(r.Item2); } catch { }
         Point3D p = r.Center;
         sb.AppendLine(string.Join(",", new[] { (string)t.DisplayName, (string)r.DisplayName, r.Status.ToString(), Math.Round((double)r.Distance * ToMm, 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
-            p.X.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), p.Y.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), p.Z.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), i1, i2, (string)r.AssignedTo ?? "", Convert.ToString(r.CreatedTime) }.Select(x => "\"" + (x ?? "").Replace("\"", "'") + "\"")));
+            p.X.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), p.Y.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), p.Z.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), i1, i2, AssigneeOf(r), Convert.ToString(r.CreatedTime) }.Select(x => "\"" + (x ?? "").Replace("\"", "'") + "\"")));
     }
 }
 var path = S("path") ?? System.IO.Path.Combine(BurakBim.Shared.BurakPaths.Sub("exports", "navisworks"), "Clash-Report-" + DateTime.Now.ToString("yyyyMMdd-HHmm") + ".csv");
@@ -434,7 +441,7 @@ foreach (var r in all)
     if (r.Status.ToString() != S("status", "New")) continue; if (n++ >= I("limit", 30)) break;
     var items = new ModelItemCollection(); ModelItem a = r.Item1; ModelItem b = r.Item2; if (a != null) items.Add(a); if (b != null) items.Add(b);
     doc.CurrentSelection.CopyFrom(items); var vp = doc.CurrentViewpoint.CreateCopy(); vp.ZoomBox(items.BoundingBox()); doc.CurrentViewpoint.CopyFrom(vp);
-    var img = "clash" + n + ".png"; doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, 800, 500).Save(System.IO.Path.Combine(folder, img), System.Drawing.Imaging.ImageFormat.Png);
+    var img = "clash" + n + ".png"; ViewImage(800, 500).Save(System.IO.Path.Combine(folder, img), System.Drawing.Imaging.ImageFormat.Png);
     sb.Append("<tr><td><img src='" + img + "' width='400'></td><td><b>" + (string)r.DisplayName + "</b><br>Distance: " + Math.Round((double)r.Distance * ToMm, 1) + " mm<br>" + System.Net.WebUtility.HtmlEncode(a == null ? "" : PathOf(a)) + "<br>vs<br>" + System.Net.WebUtility.HtmlEncode(b == null ? "" : PathOf(b)) + "</td></tr>");
 }
 sb.Append("</table></body></html>"); var file = System.IO.Path.Combine(folder, "index.html"); System.IO.File.WriteAllText(file, sb.ToString());
@@ -452,8 +459,8 @@ arg: all | boolean | Delete every test
 code:
 var data = ClashDoc().TestsData;
 if (B("all")) { data.TestsClear(); return R("cleared", true); }
-var del = new List<dynamic>(); foreach (dynamic t in data.Tests) if (SL("tests").Contains((string)t.DisplayName)) del.Add(t);
-foreach (var t in del) data.TestsRemove(t);
+var del = new List<dynamic>(); foreach (dynamic t in ClashTests()) if (SL("tests").Contains((string)t.DisplayName)) del.Add(t);
+foreach (var t in del) RemoveClashTest(t);
 return R("deleted", del.Count);
 
 @@ navis_clash_edit_test
@@ -587,6 +594,7 @@ foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children)
 return r;
 
 @@ navis_comment_add
+readonly: false
 title: Add comment to a viewpoint
 host: navisworks
 set: navisworks
@@ -600,7 +608,7 @@ foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children)
   if (it.DisplayName == S("viewpoint"))
   {
       CommentStatus st; if (!Enum.TryParse(S("status", "New"), true, out st)) st = CommentStatus.New;
-      var cc = new CommentCollection(); foreach (Comment c in it.Comments) cc.Add(c); cc.Add(new Comment(S("body"), st, Environment.UserName));
+      var cc = new CommentCollection(); foreach (Comment c in it.Comments) cc.Add(c); cc.Add(NewComment(S("body"), st, Environment.UserName));
       doc.SavedViewpoints.EditComments(it, cc); return R("added", true);
   }
 Fail("Viewpoint not found"); return null;

@@ -2,11 +2,14 @@ BURAK BIM - install guide
 =========================
 
 INSTALL
-  1. Close Revit, AutoCAD, Navisworks and your AI apps.
-  2. Double-click BURAK-BIM-Installer.exe.
+  1. Double-click BURAK-BIM-Installer.exe. Setup finds your BIM software and AI apps.
+     If Revit, AutoCAD or Navisworks is open, it asks you to save and close it.
+     If Claude Desktop is open, setup offers to restart it.
      No administrator rights, no internet and no .NET are needed.
-  3. Fully quit and restart your AI app (Claude Desktop: quit from the tray icon).
-  4. Open your BIM software and ask your AI app: "Use BURAK BIM: burak_status"
+  2. Open your BIM software and ask your AI app: "Use BURAK BIM: burak_status"
+     In Claude Desktop, BURAK BIM is listed under Settings > Developer.
+
+  If you install an AI app later: Start menu > BURAK BIM > Connect AI apps again.
 
 UNINSTALL
   Double-click BURAK-BIM-Uninstaller.exe.
@@ -30,5 +33,13 @@ PLANSWIFT
   Open PlanSwift and a job first. If the connection reports that the API is not
   registered, run PlanSwift once as administrator.
 
-HELP
+BURAK BIM TAB
+  Revit, AutoCAD and AutoCAD-based products, and Navisworks show a BURAK BIM tab
+  with an About section. Inventor gets the same tab, built during setup.
+  Rhino has no ribbon, so it gets a BURAK BIM panel (command: BurakBim).
+  The other supported programs connect without a tab.
+
+CONTACT
+  WhatsApp: +923189848904
+  LinkedIn: Iftikhar Khan
   https://github.com/BURAKAFRIDI92/BURAK-BIM

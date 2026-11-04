@@ -32,12 +32,13 @@ title: Select by property (advanced)
 host: navisworks
 set: navisworks
 tx: false
-desc: Find Items with several AND conditions, e.g. [{"category":"Element","property":"Category","value":"Walls"},{"category":"Element","property":"Level","value":"L1"}]. op: equals, contains, wildcard, defined, notequals, greater, less.
+desc: Find Items with several AND conditions, e.g. [{"category":"Element","property":"Category","value":"Walls"},{"category":"Element","property":"Level","value":"L1"}]. op: equals, contains, wildcard, defined, notequals, greater, less. greater and less compare numbers, and lengths in model units.
 arg: conditions | array! | List of {category, property, value, op}
 arg: select | boolean | Select results (default true)
 arg: limit | integer | Max listed (default 200)
 code:
 var s = new Search(); s.Selection.SelectAll(); s.Locations = SearchLocations.DescendantsAndSelf;
+var numeric = new List<Tuple<string, string, bool, double>>();
 foreach (var o in A("conditions").OfType<Dictionary<string, object>>())
 {
     var cat = BurakBim.Shared.Json.Str(o, "category"); var prop = BurakBim.Shared.Json.Str(o, "property"); var val = BurakBim.Shared.Json.Str(o, "value"); var op = BurakBim.Shared.Json.Str(o, "op", val == null ? "defined" : "equals");
@@ -46,12 +47,29 @@ foreach (var o in A("conditions").OfType<Dictionary<string, object>>())
     else if (op == "notequals") c = c.CompareWith(SearchConditionComparison.NotEqual, VariantData.FromDisplayString(val));
     else if (op == "contains") c = c.DisplayStringContains(val);
     else if (op == "wildcard") c = c.DisplayStringWildcard(val);
-    else if (op == "greater") c = c.CompareWith(SearchConditionComparison.GreaterThan, VariantData.FromDouble(double.Parse(val, System.Globalization.CultureInfo.InvariantCulture)));
-    else if (op == "less") c = c.CompareWith(SearchConditionComparison.LessThan, VariantData.FromDouble(double.Parse(val, System.Globalization.CultureInfo.InvariantCulture)));
+    // the search only matches values of the same data type, so numbers are compared below, after finding the items that have the property
+    else if (op == "greater" || op == "less") numeric.Add(Tuple.Create(cat, prop, op == "greater", double.Parse(val, System.Globalization.CultureInfo.InvariantCulture)));
     if (op != "defined" && op != "greater" && op != "less") c = c.IgnoreStringValueCase();
     s.SearchConditions.Add(c);
 }
 var items = s.FindAll(doc, false);
+if (numeric.Count > 0)
+{
+    Func<VariantData, double?> number = v => v.IsDouble ? v.ToDouble() : v.IsInt32 ? v.ToInt32() : v.IsDoubleLength ? v.ToDoubleLength() : v.IsDoubleArea ? v.ToDoubleArea() : v.IsDoubleVolume ? v.ToDoubleVolume() : v.IsDoubleAngle ? v.ToDoubleAngle() : (double?)null;
+    var kept = new ModelItemCollection();
+    foreach (ModelItem it in items)
+    {
+        bool ok = true;
+        foreach (var n in numeric)
+        {
+            var p = it.PropertyCategories.FindPropertyByDisplayName(n.Item1, n.Item2);
+            var d = p == null ? null : number(p.Value);
+            ok = ok && d != null && (n.Item3 ? d > n.Item4 : d < n.Item4);
+        }
+        if (ok) kept.Add(it);
+    }
+    items = kept;
+}
 if (B("select", true)) doc.CurrentSelection.CopyFrom(items);
 return R("count", items.Count, "items", DescAll(items, I("limit", 200)));
 
@@ -159,6 +177,7 @@ foreach (ModelItem it in (ModelItemCollection)Items())
 return r;
 
 @@ navis_hide_unselected
+readonly: false
 title: Hide unselected
 host: navisworks
 set: navisworks
@@ -185,6 +204,7 @@ foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.D
 return R("count", r.Count, "items", r);
 
 @@ navis_color
+readonly: false
 title: Override color / transparency
 host: navisworks
 set: navisworks
@@ -208,6 +228,7 @@ if (Has("transparency")) { if (B("temporary")) doc.Models.OverrideTemporaryTrans
 return R("items", items.Count);
 
 @@ navis_reset_appearance
+readonly: false
 title: Reset appearance
 host: navisworks
 set: navisworks
@@ -220,6 +241,7 @@ if (B("all")) { doc.Models.ResetAllPermanentMaterials(); doc.Models.ResetAllTemp
 ModelItemCollection items = Items(); doc.Models.ResetPermanentMaterials(items); return R("reset", items.Count);
 
 @@ navis_color_by_property
+readonly: false
 title: Color by property value
 host: navisworks
 set: navisworks
@@ -246,6 +268,7 @@ foreach (var kv in groups.OrderByDescending(x => x.Value.Count))
 return legend;
 
 @@ navis_transform
+readonly: false
 title: Move / rotate items (override transform)
 host: navisworks
 set: navisworks
@@ -310,6 +333,7 @@ foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.D
 return res.OrderBy(k => k.Key).ToDictionary(k => k.Key, k => (object)R("count", (int)k.Value[0], "sum", Math.Round(k.Value[1], 4)));
 
 @@ navis_add_custom_property
+readonly: false
 title: Add custom properties (user data tab)
 host: navisworks
 set: navisworks
@@ -378,6 +402,7 @@ var bb = doc.GetBoundingBox(false);
 return R("models", doc.Models.Count, "items", items, "geometryItems", geo, "sizeM", new List<object> { Math.Round(bb.Size.X * ToMm / 1000, 2), Math.Round(bb.Size.Y * ToMm / 1000, 2), Math.Round(bb.Size.Z * ToMm / 1000, 2) });
 
 @@ navis_required
+readonly: false
 title: Make items required / unrequired
 host: navisworks
 set: navisworks
@@ -403,12 +428,12 @@ host: navisworks
 set: navisworks
 tx: false
 readonly: false
-desc: Publish the current document to an NWD (title, author, comments, optional password protection off).
+desc: Publish the current document to an NWD (title, author, comments, optional password protection off). Navisworks then uses the published NWD as the open model, so keep that file. Reopen the project file before saving it.
 arg: path | string! | Output .nwd path
 arg: title | string | Title
 arg: author | string | Author
 arg: comments | string | Comments
 code:
 var pp = new PublishProperties { Title = S("title", doc.Title), Author = S("author", "BURAK BIM"), Comments = S("comments", "") };
-doc.PublishFile(S("path"), pp);
-return R("published", S("path"));
+PublishNwd(S("path"), pp);
+return R("published", S("path"), "note", "Navisworks now uses this NWD as the open model. Reopen your project file before saving it, or the project will depend on this NWD.");

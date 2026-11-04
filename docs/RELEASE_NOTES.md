@@ -3,10 +3,17 @@
 **This release makes BURAK BIM work in every version on every PC, lets the AI see the model, and adds a way to reach every command.**
 
 ## Download
-- **`BURAK-BIM-Installer-1.3.0-win-x64.zip`**: start here. It contains `BURAK-BIM-Installer.exe`, `BURAK-BIM-Uninstaller.exe`, a short guide and checksums. No internet, no .NET and no admin rights are needed.
+- **`BURAK-BIM-1.3.0-Complete.zip`**: start here. It contains `BURAK-BIM-Installer.exe`, `BURAK-BIM-Uninstaller.exe`, a short guide and checksums. No internet, no .NET and no admin rights are needed.
 - `BURAK-BIM-Setup-1.3.0.exe`: the same installer on its own.
 - **`BURAK-BIM-1.3.0.mcpb`**: a one-click Claude Desktop extension. Double-click it.
 - `BURAK-BIM-1.3.0.zip`: the same package, for `installer\install.ps1`.
+
+## Latest fixes
+- **BURAK BIM tab in Navisworks and AutoCAD** (and every AutoCAD-based product), next to the one Revit already has.
+- **Clash Detective works on Navisworks 2027.** Autodesk removed `DocumentClashTests.Tests` in 2027, which stopped every clash tool.
+- **Clash status, assignee and NWD publishing work on Navisworks 2026 and 2027**, where Autodesk changed those calls.
+- **Image exports work on Navisworks 2024 and later**, including the HTML clash report.
+- **Read-only mode now blocks 30 Navisworks tools** that change the model or view but were marked as read-only.
 
 ## Highlights
 - **Prebuilt bridges** for Revit and AutoCAD (and Civil 3D and every vertical) 2022 to 2027, and Navisworks 2022 to 2026, with C# scripting. Navisworks 2027 is compiled during setup against your installed copy. Nothing is downloaded at setup.

@@ -172,7 +172,7 @@ if (-not $NoInstaller) {
     # the complete ZIP also contains the installer at its top level
     Copy-Item $setup (Join-Path $stage "BURAK-BIM-Setup-$Version.exe")
 
-    # standalone uninstaller + the small ZIP most users download: installer, uninstaller, guide, checksums
+    # standalone uninstaller + the ZIP people share: one folder with the installer, uninstaller, guide, checksums
     $uninstaller = Join-Path $stageRoot 'BURAK-BIM-Uninstaller.exe'
     Write-Step "Building BURAK-BIM-Uninstaller.exe with NSIS"
     & $Makensis "-DVERSION=$Version" "-DPKG=$stage" "-DOUTFILE=$uninstaller" (Join-Path $stage 'installer/BurakBimUninstaller.nsi')
@@ -180,7 +180,8 @@ if (-not $NoInstaller) {
     Invoke-Sign @($uninstaller)
     Copy-Item $uninstaller (Join-Path $stage 'BURAK-BIM-Uninstaller.exe')
 
-    $kit = Join-Path $stageRoot 'kit'
+    $kitRoot = Join-Path $stageRoot 'kit'
+    $kit = Join-Path $kitRoot "BURAK-BIM-$Version"
     New-Item -ItemType Directory -Force -Path $kit | Out-Null
     Copy-Item $setup (Join-Path $kit 'BURAK-BIM-Installer.exe')
     Copy-Item $uninstaller (Join-Path $kit 'BURAK-BIM-Uninstaller.exe')
@@ -189,7 +190,7 @@ if (-not $NoInstaller) {
     if (Test-Path (Join-Path $stage 'BURAK-BIM.mcpb')) { Copy-Item (Join-Path $stage 'BURAK-BIM.mcpb') (Join-Path $kit 'BURAK-BIM.mcpb') }
     $sums = Get-ChildItem $kit -File | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name }
     Set-Content (Join-Path $kit 'SHA256SUMS.txt') $sums -Encoding ascii
-    Compress-Archive -Path (Join-Path $kit '*') -DestinationPath (Join-Path $dist "BURAK-BIM-Installer-$Version-win-x64.zip") -Force
+    Compress-Archive -Path $kit -DestinationPath (Join-Path $dist "BURAK-BIM-$Version-Complete.zip") -Force
 }
 
 # ---------------------------------------------------------------- 5. complete ZIP (Setup.exe + .mcpb + full package)

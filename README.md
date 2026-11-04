@@ -56,7 +56,7 @@ On top of these layers come **Scan-to-BIM** and a **BIM-Inspector workflow**. Ev
 - No internet, no .NET and no admin rights are needed. Setup uses no PowerShell, no scheduled tasks and no self-extracting files.
 - **macOS:** Revit, Navisworks, Civil 3D, SAP2000, ETABS, Bluebeam and PlanSwift are Windows programs, so BURAK BIM runs on the Windows PC where they are installed. On a Mac, run them in Parallels or another Windows VM and install BURAK BIM inside Windows. Archicad for Mac can be reached through its JSON API from a Windows PC on the same machine or network.
 
-1. Download `BURAK-BIM-Installer-<version>-win-x64.zip` from Releases and extract it. It contains the installer and the uninstaller.
+1. Download `BURAK-BIM-<version>-Complete.zip` from Releases and extract it. It contains the installer and the uninstaller.
 2. **Close Revit, AutoCAD, Navisworks and your AI apps.**
 3. Run **`BURAK-BIM-Installer.exe`**. Keep the default folder `D:\BURAK BIM` or pick another drive.
 4. Restart your AI app. To fully quit Claude Desktop, right-click the tray icon and choose Quit. Claude Desktop users can also double-click **`BURAK-BIM.mcpb`** (one-click extension).
