@@ -35,7 +35,7 @@
 - New commands: `--install`, `--rescan`, `--uninstall`. Start menu: *Repair - detect new software*.
 
 ### Reliability: the "it doesn't work in my Revit version / it doesn't connect" fixes
-- **Prebuilt bridges for every version.** Revit 2022-2027, AutoCAD and all AutoCAD-based products 2022-2027, and Navisworks are compiled in CI against each year's own API, with C# scripting included. The installer no longer downloads a .NET SDK or compiles anything on the user's PC.
+- **Prebuilt bridges.** Revit 2022-2027, AutoCAD and all AutoCAD-based products 2022-2027, and Navisworks 2022-2026 are compiled in CI against each year's own API, with C# scripting included. The installer no longer downloads a .NET SDK.
   - 1.2 needed internet access to dot.net and nuget.org during setup, so company firewalls made it fall back to a Revit-2024-only bridge and a server that required a separate .NET runtime.
 - **Self-contained server.** `BurakBim.Server.exe` runs on any Windows 10/11 x64 PC with no .NET installed.
 - **Offline fallback compiler.** A version without a prebuilt bridge, for example a future service pack, is compiled on the PC with the bundled Roslyn compiler (`tools\roslyn`) against the installed product's DLLs. No internet is needed.

@@ -1,4 +1,4 @@
-# Publishing BURAK BIM 1.3.0 (Setup.exe, ZIP, .mcpb)
+# Publishing BURAK BIM 1.3.0 (installer ZIP, Setup.exe, ZIP, .mcpb)
 
 The release binaries are built by GitHub Actions on Windows, from your BURAK-BIM repository. The build creates:
 

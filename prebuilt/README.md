@@ -6,7 +6,7 @@ From 1.3.0, the release build (GitHub Actions, `.github/workflows/build.yml`) co
 prebuilt/
   revit/2022 ... 2027/        BurakBim.Bridge.Revit.dll  (net48 for 2022-2024, net8 for 2025-2026, net10 for 2027)
   autocad/2022 ... 2027/      BurakBim.Bridge.AutoCAD.dll (AutoCAD, Civil 3D, Plant 3D, Map 3D, MEP, Advance Steel ...)
-  navisworks/2022 ... 2027/   BurakBim.Bridge.Navisworks.dll
+  navisworks/2022 ... 2026/   BurakBim.Bridge.Navisworks.dll (2027: compiled during setup, no public reference package yet)
   _shared/net48/              Roslyn C# scripting, shared by all .NET Framework bridges
   _shared/netcore/            Roslyn C# scripting, shared by all .NET 8 / .NET 10 bridges
 ```

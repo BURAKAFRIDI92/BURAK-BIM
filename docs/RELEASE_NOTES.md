@@ -9,7 +9,7 @@
 - `BURAK-BIM-1.3.0.zip`: the same package, for `installer\install.ps1`.
 
 ## Highlights
-- **Prebuilt bridges** for Revit, AutoCAD (and Civil 3D and every vertical) and Navisworks, 2022 to 2027, with C# scripting. Nothing is compiled or downloaded at setup.
+- **Prebuilt bridges** for Revit and AutoCAD (and Civil 3D and every vertical) 2022 to 2027, and Navisworks 2022 to 2026, with C# scripting. Navisworks 2027 is compiled during setup against your installed copy. Nothing is downloaded at setup.
 - **Connects to 19 AI apps automatically:** Claude Desktop (classic and Store), Claude Code, Codex/ChatGPT, Cursor, Windsurf, Antigravity, Gemini, VS Code, Visual Studio, Cline, Roo, Kilo, LM Studio, Kiro, Amazon Q, Trae, Continue, opencode and Zed. Each app gets a tool list within its limits.
 - **27 BIM and VDC workflow skills:** project setup, model QA gate, 4D scheduling, 5D quantity reconciliation, drawing review, handover and a router that maps any responsibility to its skill.
 - **Capture mode:** `revit_capture` renders any plan, section, elevation, 3D view or sheet. `capture` shows any window. Every change comes back with a picture.
@@ -21,6 +21,10 @@
 
 ## Before you run it
 If this build is not code-signed, Windows SmartScreen may show "Windows protected your PC". Compare the file with `SHA256SUMS.txt`, then choose **More info > Run anyway**. BURAK BIM runs on Windows only.
+
+## What was tested
+- **Tested automatically on a clean Windows machine:** the server, the MCP handshake for each AI client profile, compiling the bridges, install, upgrade cleanup and uninstall.
+- **Not yet tested live in this release:** the bridges loading inside real Revit, AutoCAD and Navisworks; Navisworks 2027; Bluebeam Revu and PlanSwift against the real programs. Please report problems on the Issues page.
 
 ## Upgrading from 1.2
 1. Close Revit, AutoCAD, Navisworks and your AI apps.
