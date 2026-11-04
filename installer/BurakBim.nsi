@@ -80,6 +80,9 @@ Section "!BURAK BIM core (server, bridges for every detected version, skills)" S
   ; stop a running server from an older version so its files can be replaced
   nsExec::Exec 'taskkill /F /IM BurakBim.Server.exe'
   Pop $0
+  ; versions before 1.3 ran the server through dotnet.exe
+  nsExec::Exec 'taskkill /F /FI "IMAGENAME eq dotnet.exe" /FI "MODULES eq BurakBim.Server.dll"'
+  Pop $0
   SetOutPath "$INSTDIR\server"
   File /r "${PKG}\server\*"
   SetOutPath "$INSTDIR\setup"
@@ -144,6 +147,9 @@ Section "Uninstall"
   nsExec::ExecToLog '"$INSTDIR\server\BurakBim.Server.exe" --home "$INSTDIR" --uninstall'
   Pop $0
   nsExec::Exec 'taskkill /F /IM BurakBim.Server.exe'
+  Pop $0
+  ; versions before 1.3 ran the server through dotnet.exe
+  nsExec::Exec 'taskkill /F /FI "IMAGENAME eq dotnet.exe" /FI "MODULES eq BurakBim.Server.dll"'
   Pop $0
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\BURAK BIM"
   RMDir /r "$SMPROGRAMS\BURAK BIM"

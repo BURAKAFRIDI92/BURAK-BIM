@@ -10,9 +10,10 @@ Found in a live test on Navisworks Manage 2027, then checked by comparing the pu
 - **Clash tools work on Navisworks 2027.** Autodesk removed `DocumentClashTests.Tests`, `TestsAddCopy(ClashTest)` and `TestsRemove(ClashTest)`. All clash tools now use `TestsRoot` and include tests inside folders. These members exist in 2022-2027.
 - **Setting clash status or assignee works on 2026 and 2027**, where Autodesk replaced the string with an `Assignee`.
 - **`navis_comment_add` works on 2027**, where a comment's author changed from a string to an `Assignee`.
-- **`navis_publish_nwd` works on 2026 and 2027**, where `PublishFile` needs `NwdExportOptions`.
+- **`navis_publish_nwd` works on 2026 and 2027**, where `PublishFile` needs `NwdExportOptions`. It now warns that Navisworks uses the published NWD as the open model.
+- **Upgrades from 1.2.** Setup now stops an older server running through `dotnet.exe`, and asks you to close your programs when a bridge file is in use.
 - **Navisworks images work on 2024 and later.** `navis_image_export`, `navis_viewpoint_images`, `navis_clash_report_html` and `navis_documentation_snapshot` used a `GenerateImage` call that Autodesk changed in 2024.
-- **`navis_select_by_property` compiles on every year.** Its greater and less comparisons used names that do not exist in the API.
+- **`navis_select_by_property` greater and less work.** They used names that do not exist in the API, and a Navisworks search only matches values of the same data type. Numbers are now compared directly, including whole numbers, lengths, areas, volumes and angles.
 - **Read-only mode.** 30 Navisworks tools that change the model, view or files were marked read-only, so read-only mode did not block them.
 - **CI compiles every Navisworks tool** against the API of each year that has a public reference package, and fails on an error.
 

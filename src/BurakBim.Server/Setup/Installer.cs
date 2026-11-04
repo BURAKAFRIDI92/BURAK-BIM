@@ -89,9 +89,11 @@ public static class Installer
             Warn($"{m}: no bridge is installed. Capture + computer control still work for it; update BURAK BIM to connect it fully.");
 
         Step("Registering with the applications");
-        RegisterRevit(installed);
-        RegisterAutoCad(installed, products);
-        RegisterNavisworks(installed);
+        foreach (var register in new Action[] { () => RegisterRevit(installed), () => RegisterAutoCad(installed, products), () => RegisterNavisworks(installed) })
+        {
+            try { register(); }
+            catch (IOException ex) { Warn("A program is using BURAK BIM files. Close Revit, AutoCAD and Navisworks, then run setup again (" + ex.Message + ")"); }
+        }
 
         if (!File.Exists(Path.Combine(root, "config", "burakbim.json")))
             File.WriteAllText(Path.Combine(root, "config", "burakbim.json"), Json.Serialize(Core.Config.Defaults(), true), new UTF8Encoding(false));
