@@ -11,7 +11,7 @@
 ## Highlights
 - **Prebuilt bridges** for Revit, AutoCAD (and Civil 3D and every vertical) and Navisworks, 2022 to 2027, with C# scripting. Nothing is compiled or downloaded at setup.
 - **Connects to 19 AI apps automatically:** Claude Desktop (classic and Store), Claude Code, Codex/ChatGPT, Cursor, Windsurf, Antigravity, Gemini, VS Code, Visual Studio, Cline, Roo, Kilo, LM Studio, Kiro, Amazon Q, Trae, Continue, opencode and Zed. Each app gets a tool list within its limits.
-- **28 BIM and VDC workflow skills:** project setup, model QA gate, 4D scheduling, 5D quantity reconciliation, drawing review, handover and a router that maps any responsibility to its skill.
+- **27 BIM and VDC workflow skills:** project setup, model QA gate, 4D scheduling, 5D quantity reconciliation, drawing review, handover and a router that maps any responsibility to its skill.
 - **Capture mode:** `revit_capture` renders any plan, section, elevation, 3D view or sheet. `capture` shows any window. Every change comes back with a picture.
 - **Computer control with your permission:** mouse and keyboard work only after you click Yes on screen. Ctrl+Alt+Q stops it instantly.
 - **New connectors:**

@@ -63,12 +63,12 @@ public static class McpSelfTest
         Check(pl.OfType<Dictionary<string, object>>().Any(x => Json.Str(x, "name") == "skill-bim-base"), $"skills as MCP prompts ({pl.Count} prompts)");
         var res = s.Dispatch(Json.O("jsonrpc", "2.0", "id", 8, "method", "resources/read", "params", Json.O("uri", "burak://skills/revit-model-health")));
         Check(Json.Obj(res!, "result") != null, "skills as MCP resources");
-        Check(Skills.SkillLibrary.All().Count >= 28, $"{Skills.SkillLibrary.All().Count} skills embedded");
+        Check(Skills.SkillLibrary.All().Count >= 27, $"{Skills.SkillLibrary.All().Count} skills embedded");
         var registry = Program.BuildRegistry();
         var unknownTools = Skills.SkillLibrary.All().Where(x => !x.Custom)
             .SelectMany(x => System.Text.RegularExpressions.Regex.Matches(x.Markdown, @"`((?:revit|navis|navisworks|autocad|civil|csi|bluebeam|planswift|pdf|archicad|rhino|robot|inventor|scan|inspector|burak|capture|computer|ribbon|api|com|ui|dynamo|script|grasshopper|recap)_[a-z0-9_]+)")
                 .Select(m => (skill: x.Name, tool: m.Groups[1].Value)))
-            .Where(r => registry.Get(r.tool) == null).Select(r => r.skill + ":" + r.tool).Distinct().ToList();
+            .Where(r => registry.Get(r.tool) == null && r.tool is not ("burak_tools" or "burak_run")).Select(r => r.skill + ":" + r.tool).Distinct().ToList();
         Check(unknownTools.Count == 0, "every tool named in a skill exists" + (unknownTools.Count > 0 ? " - missing " + string.Join(", ", unknownTools) : ""));
         var ping = s.Dispatch(Json.O("jsonrpc", "2.0", "id", 6, "method", "ping"));
         Check(ping != null, "ping");

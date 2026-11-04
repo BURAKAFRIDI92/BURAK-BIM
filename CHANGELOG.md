@@ -11,7 +11,7 @@
 - **CI now installs and uninstalls the ZIP** on a clean Windows machine, and fails if a skill names a tool that does not exist.
 
 ### BIM workflow skills: the method, not just the tools
-- There are **28 professional workflow skills**. New for BIM management and VDC: `bim-vdc-router`, `bim-project-setup`, `bim-qa-gate`, `bim-handover`, `vdc-4d-scheduling`, `vdc-5d-quantities`, `drawing-review-cycle`, `rhino-grasshopper-computational`, plus each the step-by-step method an experienced BIM/VDC engineer follows:
+- There are **27 professional workflow skills**. New for BIM management and VDC: `bim-vdc-router`, `bim-project-setup`, `bim-qa-gate`, `bim-handover`, `vdc-4d-scheduling`, `vdc-5d-quantities`, `drawing-review-cycle`, `rhino-grasshopper-computational`, plus each the step-by-step method an experienced BIM/VDC engineer follows:
   - **Base methods:** `bim-base`, `revit-base`, `computer-control`.
   - **Revit:** `revit-model-health`, `revit-documentation`, `revit-document-control-iso19650`, `revit-architecture-modeling`, `revit-structure-modeling`, `revit-mep-modeling` (HVAC, plumbing/piping, electrical), `revit-scan-to-bim`, `revit-family-creation`.
   - **Coordination:** `bim-coordination` (Navisworks clash cycle).

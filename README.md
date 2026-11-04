@@ -23,7 +23,7 @@ BURAK BIM takes a different approach. One installer and one MCP server detect th
 
 **Capture mode** makes the AI *see*. `revit_capture` renders any plan, section, elevation, 3D view or sheet through the Revit API. `capture` shows any application window or dialog. When capture mode is on (the default), every change comes back with a picture of the result.
 
-**BIM workflow skills** give the AI the *method* as well as the tools: 28 step-by-step professional workflows, including BIM management and VDC (project setup, QA gate, 4D, 5D, drawing review, handover). They cover model health, documentation, ISO 19650 document control, architecture / structure / MEP modelling, scan-to-BIM, clash coordination, ETABS/SAP2000 analysis, Bluebeam/PlanSwift takeoff, AutoCAD cut files, Civil 3D site and Archicad. They work in every AI app through `burak_skills`, MCP prompts and resources. Add your own company skills as `SKILL.md` files.
+**BIM workflow skills** give the AI the *method* as well as the tools: 27 step-by-step professional workflows, including BIM management and VDC (project setup, QA gate, 4D, 5D, drawing review, handover). They cover model health, documentation, ISO 19650 document control, architecture / structure / MEP modelling, scan-to-BIM, clash coordination, ETABS/SAP2000 analysis, Bluebeam/PlanSwift takeoff, AutoCAD cut files, Civil 3D site and Archicad. They work in every AI app through `burak_skills`, MCP prompts and resources. Add your own company skills as `SKILL.md` files.
 
 On top of these layers come **Scan-to-BIM** and a **BIM-Inspector workflow**. Every element an AI creates is stamped with the AI client, session, tool, user and time. It is color-coded for review, checked against the point cloud and logged in an audit trail.
 

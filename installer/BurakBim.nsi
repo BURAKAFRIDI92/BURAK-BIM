@@ -136,7 +136,7 @@ Section "-Configure"
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecCore} "Server, ready-made bridges for every detected Revit / AutoCAD-family / Navisworks version (2022-2027), SAP2000 / ETABS / CSiBridge / SAFE, Archicad, Bluebeam, PlanSwift support and 28 BIM and VDC workflow skills."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecCore} "Server, ready-made bridges for every detected Revit / AutoCAD-family / Navisworks version (2022-2027), SAP2000 / ETABS / CSiBridge / SAFE, Archicad, Bluebeam, PlanSwift support and 27 BIM and VDC workflow skills."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecClients} "Adds BURAK-BIM to Claude Desktop, Claude Code, Codex, Cursor, Windsurf, Antigravity, Gemini CLI, VS Code, Visual Studio, Cline, Roo, LM Studio, Kiro and more, if installed (backups are kept)."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
