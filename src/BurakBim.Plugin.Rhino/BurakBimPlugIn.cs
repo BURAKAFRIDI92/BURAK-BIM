@@ -31,13 +31,13 @@ namespace BurakBim.Plugin.RhinoTab
             Panels.RegisterPanel(this, typeof(BurakPanel), "BURAK BIM", icon);
             // show the panel the first time only: after that Rhino remembers what the user chose
             if (!Settings.GetBool("PanelShown", false))
-                RhinoApp.Idled += OpenOnce;
+                RhinoApp.Idle += OpenOnce;
             return LoadReturnCode.Success;
         }
 
         void OpenOnce(object sender, EventArgs e)
         {
-            RhinoApp.Idled -= OpenOnce;
+            RhinoApp.Idle -= OpenOnce;
             Settings.SetBool("PanelShown", true);
             Panels.OpenPanel(typeof(BurakPanel).GUID);
         }
