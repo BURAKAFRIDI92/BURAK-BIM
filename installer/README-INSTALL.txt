@@ -2,13 +2,14 @@ BURAK BIM - install guide
 =========================
 
 INSTALL
-  1. Close Revit, AutoCAD, Navisworks and your AI apps.
-  2. Double-click BURAK-BIM-Installer.exe.
+  1. Double-click BURAK-BIM-Installer.exe. Setup finds your BIM software and AI apps.
+     If Revit, AutoCAD or Navisworks is open, it asks you to save and close it.
+     If Claude Desktop is open, setup offers to restart it.
      No administrator rights, no internet and no .NET are needed.
-  3. Open your AI app. If Claude Desktop does not show BURAK BIM, quit it from the tray
-     icon, use Start menu > BURAK BIM > Connect AI apps again, and open it again.
-     Look in Claude Desktop under Settings > Developer.
-  4. Open your BIM software and ask your AI app: "Use BURAK BIM: burak_status"
+  2. Open your BIM software and ask your AI app: "Use BURAK BIM: burak_status"
+     In Claude Desktop, BURAK BIM is listed under Settings > Developer.
+
+  If you install an AI app later: Start menu > BURAK BIM > Connect AI apps again.
 
 UNINSTALL
   Double-click BURAK-BIM-Uninstaller.exe.

@@ -49,15 +49,28 @@ public static class ClientConnector
         return l;
     }
 
-    /// <summary>Newer Claude Desktop keeps its data in %LOCALAPPDATA%\Claude-Data\claude_&lt;id&gt; instead of %APPDATA%\Claude.</summary>
+    /// <summary>
+    /// Newer Claude Desktop keeps its data in %LOCALAPPDATA%\Claude-Data\claude_&lt;id&gt; instead of %APPDATA%\Claude.
+    /// Claude has moved it before, so any existing config in a Claude folder there counts, one level down at most.
+    /// Claude-3p is a separate mode with its own settings and is left alone.
+    /// </summary>
     static List<string> ClaudeDataDirs()
     {
+        var dirs = new List<string>();
         try
         {
-            var root = P(LocalAppData, "Claude-Data");
-            return D(root) ? Directory.GetDirectories(root, "claude*").ToList() : new List<string>();
+            var data = P(LocalAppData, "Claude-Data");
+            if (D(data)) dirs.AddRange(Directory.GetDirectories(data, "claude*"));
+            foreach (var top in Directory.GetDirectories(LocalAppData, "Claude*"))
+            {
+                var name = Path.GetFileName(top);
+                if (name.Equals("Claude-Data", StringComparison.OrdinalIgnoreCase) || name.Equals("Claude-3p", StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var d in new[] { top }.Concat(Directory.GetDirectories(top)))
+                    if (F(P(d, "claude_desktop_config.json"))) dirs.Add(d);
+            }
         }
-        catch { return new List<string>(); }
+        catch { }
+        return dirs;
     }
 
     /// <summary>globalStorage folders of VS Code-family editors (for Cline / Roo / Kilo extensions).</summary>

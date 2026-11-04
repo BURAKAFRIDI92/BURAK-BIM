@@ -39,7 +39,7 @@ VIAddVersionKey "LegalCopyright" "BURAK BIM"
 !define MUI_WELCOMEPAGE_TITLE "Welcome to BURAK BIM ${VERSION}"
 !define MUI_WELCOMEPAGE_TEXT "BURAK BIM connects AI agents (Claude, ChatGPT Codex, Google Antigravity, Cursor, Gemini, VS Code, Windsurf...) to:$\r$\n$\r$\n  - Revit 2022-2027, AutoCAD / Civil 3D / Plant 3D / Map 3D / Advance Steel 2022-2027, Navisworks 2022-2027$\r$\n  - SAP2000, ETABS, CSiBridge, SAFE$\r$\n  - Graphisoft Archicad, Bluebeam Revu, PlanSwift$\r$\n  - Inventor, ReCap Pro, Robot, Rhino + Grasshopper, Dynamo$\r$\n$\r$\nSetup detects the installed versions, installs a ready-made bridge for each one (no internet needed) and connects your AI apps.$\r$\n$\r$\nClose Revit, AutoCAD, Navisworks and your AI apps before continuing."
 !define MUI_FINISHPAGE_TITLE "BURAK BIM is installed"
-!define MUI_FINISHPAGE_TEXT "Restart your AI app (fully quit Claude Desktop from the tray icon), open your software and ask:$\r$\n$\r$\n   'Use BURAK BIM: burak_status'$\r$\n$\r$\nIf Claude Desktop does not show BURAK BIM, double-click BURAK-BIM.mcpb in the install folder.$\r$\nThe install log is in the logs folder."
+!define MUI_FINISHPAGE_TEXT "BURAK BIM is connected to the AI apps found on this PC. Open your BIM software and ask your AI app:$\r$\n$\r$\n   'Use BURAK BIM: burak_status'$\r$\n$\r$\nIf another AI app was open during setup, close and reopen it.$\r$\nThe install log is in the logs folder."
 !define MUI_FINISHPAGE_SHOWREADME "$INSTDIR\setup\README.md"
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "Open the README"
 !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
@@ -57,6 +57,32 @@ VIAddVersionKey "LegalCopyright" "BURAK BIM"
 !insertmacro MUI_LANGUAGE "English"
 
 Var Clients
+Var ReopenClaude
+
+; Claude Desktop only loads new connections when it starts, and it can rewrite its config when it quits, so it restarts around setup.
+Function CloseClaude
+  StrCpy $ReopenClaude "0"
+  nsExec::ExecToStack 'cmd /c tasklist /NH /FI "IMAGENAME eq Claude.exe" | "$SYSDIR\find.exe" /I "Claude.exe"'
+  Pop $0
+  Pop $1
+  StrCmp $0 "0" 0 done
+  MessageBox MB_YESNO|MB_ICONQUESTION "Setup needs to restart Claude Desktop to connect BURAK BIM.$\r$\n$\r$\nClose it now and open it again when setup finishes?" /SD IDNO IDNO done
+  nsExec::Exec 'taskkill /F /IM Claude.exe'
+  Pop $0
+  Sleep 2000
+  StrCpy $ReopenClaude "1"
+  done:
+FunctionEnd
+
+Function OpenClaude
+  StrCmp $ReopenClaude "1" 0 done
+  ${If} ${FileExists} "$LOCALAPPDATA\AnthropicClaude\claude.exe"
+    Exec '"$LOCALAPPDATA\AnthropicClaude\claude.exe"'
+  ${Else}
+    Exec '"$WINDIR\explorer.exe" shell:AppsFolder\Claude_pzs8sxrjxfjjc!Claude'
+  ${EndIf}
+  done:
+FunctionEnd
 
 ; $R0 program file, $R1 name to show. Retry checks again, Cancel carries on and setup reports what could not be done.
 Function AskToClose
@@ -88,9 +114,7 @@ FunctionEnd
 ; no scheduled tasks, no downloads, no admin rights - nothing that antivirus heuristics treat as suspicious.
 Section "!BURAK BIM core (server, bridges for every detected version, skills)" SecCore
   SectionIn RO
-  StrCpy $R0 "Claude.exe"
-  StrCpy $R1 "Claude Desktop (right-click its tray icon and choose Quit)"
-  Call AskToClose
+  Call CloseClaude
   StrCpy $R0 "Revit.exe"
   StrCpy $R1 "Revit"
   Call AskToClose
@@ -159,6 +183,7 @@ Section "-Configure"
     CreateShortcut "$SMPROGRAMS\BURAK BIM\Add to Claude Desktop (extension).lnk" "$INSTDIR\BURAK-BIM.mcpb"
   ${EndIf}
   CreateShortcut "$SMPROGRAMS\BURAK BIM\Uninstall BURAK BIM.lnk" "$INSTDIR\Uninstall BURAK BIM.exe"
+  Call OpenClaude
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
