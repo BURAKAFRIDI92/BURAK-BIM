@@ -69,9 +69,10 @@ public static class Installer
             var dst = Path.Combine(root, "bridges", fam, year.ToString());
             if (!Directory.Exists(src) || Directory.GetFiles(src, "BurakBim.Bridge.*.dll").Length == 0)
             {
-                // keep an existing (locally compiled) bridge
-                if (Directory.Exists(dst) && Directory.GetFiles(dst, "BurakBim.Bridge.*.dll").Length > 0) { installed.Add($"{fam}-{year}"); Ok($"{fam} {year}: existing bridge kept"); }
-                else missing.Add($"{fam}-{year}");
+                // no prebuilt bridge for this version: compile it here against the installed product's own API
+                if (CompileBridge(fam, year, g.First(), dst, out var why)) { installed.Add($"{fam}-{year}"); Ok($"{fam} {year}: bridge compiled on this PC"); }
+                else if (Directory.Exists(dst) && Directory.GetFiles(dst, "BurakBim.Bridge.*.dll").Length > 0) { installed.Add($"{fam}-{year}"); Warn($"{fam} {year}: could not compile a new bridge, the existing one was kept ({why})"); }
+                else { missing.Add($"{fam}-{year}"); Warn($"{fam} {year}: could not compile a bridge ({why})"); }
                 continue;
             }
             try
@@ -85,7 +86,7 @@ public static class Installer
             catch (IOException ex) { Warn($"{fam} {year}: files are in use - close {fam} and run setup again ({ex.Message})"); }
         }
         foreach (var m in missing)
-            Warn($"{m}: no prebuilt bridge in this package. Run 'powershell -File \"{Path.Combine(Setup, "installer", "install.ps1")}\" -LocalBuild' to compile it on this PC, or update BURAK BIM. Capture + computer control still work for it.");
+            Warn($"{m}: no bridge is installed. Capture + computer control still work for it; update BURAK BIM to connect it fully.");
 
         Step("Registering with the applications");
         RegisterRevit(installed);
@@ -151,6 +152,104 @@ public static class Installer
             try { var d = Path.Combine(root, sub); if (Directory.Exists(d)) Directory.Delete(d, true); } catch { }
         Say("Done. Audit trail, reports, exports, config and logs were kept in " + root);
         return 0;
+    }
+
+    // ------------------------------------------------------------------ bridge for a version without a prebuilt one
+    /// <summary>Compiles one bridge with the bundled Roslyn compiler (needs only .NET Framework) against the installed product's API DLLs.</summary>
+    static bool CompileBridge(string fam, int year, Product p, string dst, out string why)
+    {
+        why = "";
+        try
+        {
+            var csc = Path.Combine(Setup, "tools", "roslyn", "csc.exe");
+            var shared = Path.Combine(Setup, "prebuilt", "_shared");
+            var hostDir = (p.Exe != null ? Path.GetDirectoryName(p.Exe) : null) ?? p.InstallDir ?? "";
+            var proj = fam switch { "revit" => "BurakBim.Bridge.Revit", "autocad" => "BurakBim.Bridge.AutoCAD", _ => "BurakBim.Bridge.Navisworks" };
+            bool netCore = fam != "navisworks" && year >= 2025;
+            var roslyn = Path.Combine(shared, netCore ? "netcore" : "net48");
+            if (!File.Exists(csc)) { why = "the bundled compiler is missing"; return false; }
+            if (!Directory.Exists(roslyn)) { why = "the shared libraries are missing: " + roslyn; return false; }
+
+            var defines = new List<string> { "TRACE", "BURAK_ROSLYN" };
+            var refs = new List<string>();
+            switch (fam)
+            {
+                case "revit":
+                    defines.Add("REVIT" + year); if (year >= 2024) defines.Add("REVIT_LONG_IDS");
+                    refs.Add(Path.Combine(hostDir, "RevitAPI.dll")); refs.Add(Path.Combine(hostDir, "RevitAPIUI.dll"));
+                    break;
+                case "autocad":
+                    defines.Add("ACAD" + year);
+                    foreach (var d in new[] { "accoremgd.dll", "acdbmgd.dll", "acmgd.dll" }) refs.Add(Path.Combine(hostDir, d));
+                    break;
+                default:
+                    defines.Add("NAVIS" + year);
+                    refs.Add(Path.Combine(hostDir, "Autodesk.Navisworks.Api.dll"));
+                    break;
+            }
+            var absent = refs.FirstOrDefault(r => !File.Exists(r));
+            if (absent != null) { why = "not found: " + absent; return false; }
+            refs.AddRange(Directory.GetFiles(roslyn, "*.dll"));
+
+            if (netCore)
+            {
+                int major = year >= 2027 ? 10 : 8;
+                var dotnetShared = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet", "shared");
+                foreach (var fw in new[] { "Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App" })
+                {
+                    var root = Path.Combine(dotnetShared, fw);
+                    var dir = Directory.Exists(root) ? Directory.GetDirectories(root, major + ".*").OrderByDescending(d => d, StringComparer.OrdinalIgnoreCase).FirstOrDefault() : null;
+                    if (dir == null) { why = $".NET {major} desktop runtime not found"; return false; }
+                    refs.AddRange(Directory.GetFiles(dir, "*.dll").Where(f => IsManaged(f)));
+                }
+                defines.Add("NETCOREAPP"); defines.Add("NET");
+            }
+            else
+            {
+                var fx = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Microsoft.NET", "Framework64", "v4.0.30319");
+                refs.AddRange(new[]
+                {
+                    "mscorlib.dll", "System.dll", "System.Core.dll", "System.Xml.dll", "System.Xml.Linq.dll", "System.Data.dll", "Microsoft.CSharp.dll", "System.Drawing.dll",
+                    "System.Windows.Forms.dll", "System.Xaml.dll", "System.Net.Http.dll", "System.Numerics.dll", "System.Runtime.Serialization.dll", "netstandard.dll", "System.Runtime.dll",
+                    "System.Collections.dll", "System.Linq.dll", "System.Threading.Tasks.dll", "System.Reflection.dll", "System.IO.dll", "System.Threading.dll", "System.Runtime.Extensions.dll",
+                    Path.Combine("WPF", "WindowsBase.dll"), Path.Combine("WPF", "PresentationCore.dll"), Path.Combine("WPF", "PresentationFramework.dll")
+                }.Select(n => Path.Combine(fx, n)).Where(File.Exists));
+            }
+
+            Directory.CreateDirectory(dst);
+            var lines = new List<string> { "/nologo", "/target:library", "/platform:x64", "/optimize+", "/langversion:latest", "/nowarn:CS0618,CS0219,CS1701,CS1702,CS8632,CS0168", "/noconfig", "/nostdlib+" };
+            lines.Add("/define:" + string.Join(";", defines));
+            lines.Add($"/out:\"{Path.Combine(dst, proj + ".dll")}\"");
+            lines.AddRange(refs.Distinct(StringComparer.OrdinalIgnoreCase).Select(r => $"/reference:\"{r}\""));
+            if (fam == "revit")
+                foreach (var png in new[] { "burakbim-16.png", "burakbim-32.png" })
+                {
+                    var pf = Path.Combine(Setup, "assets", png);
+                    if (File.Exists(pf)) lines.Add($"/resource:\"{pf}\",brand.{png}");
+                }
+            foreach (var folder in new[] { "Shared", "BurakBim.Bridge.Core", proj })
+                lines.AddRange(Directory.GetFiles(Path.Combine(Setup, "src", folder), "*.cs").Select(f => $"\"{f}\""));
+
+            var rsp = Path.Combine(BurakPaths.Root, "logs", $"csc-{fam}-{year}.rsp");
+            File.WriteAllLines(rsp, lines, new UTF8Encoding(false));
+            var psi = new System.Diagnostics.ProcessStartInfo(csc, $"\"@{rsp}\"") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            using var proc = System.Diagnostics.Process.Start(psi)!;
+            var err = proc.StandardError.ReadToEndAsync();
+            var output = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit();
+            var log = Path.Combine(BurakPaths.Root, "logs", $"csc-{fam}-{year}.log");
+            File.WriteAllText(log, output + err.Result);
+            if (proc.ExitCode != 0) { why = "the compiler reported errors, see " + log; return false; }
+            CopyDir(shared, Path.Combine(BurakPaths.Root, "bridges", "_shared"));
+            return File.Exists(Path.Combine(dst, proj + ".dll"));
+        }
+        catch (Exception ex) { why = ex.Message; return false; }
+    }
+
+    static bool IsManaged(string file)
+    {
+        try { System.Reflection.AssemblyName.GetAssemblyName(file); return true; }
+        catch { return false; }
     }
 
     // ------------------------------------------------------------------ registration
