@@ -8,7 +8,7 @@ namespace BurakBim.Shared
     public static class BurakInfo
     {
         public const string ProductName = "BURAK BIM";
-        public const string Version = "1.2.0";
+        public const string Version = "1.3.0";
         public const string Vendor = "BURAK BIM";
         public const string RegistryKey = @"Software\BURAK BIM";
         /// <summary>Wire protocol version between server and host bridges.</summary>

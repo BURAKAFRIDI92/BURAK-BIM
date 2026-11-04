@@ -32,10 +32,7 @@ public static class UiTools
     {
         var pid = Json.Int(a, "pid", 0);
         if (pid > 0) return Process.GetProcessById((int)pid);
-        var app = Json.Str(a, "app") ?? throw new ToolException("Give app (revit, autocad, navisworks, inventor, recap, robot or a process name) or pid.");
-        var name = AppProcess.TryGetValue(app, out var n) ? n : app.Replace(".exe", "");
-        var procs = Process.GetProcessesByName(name).Where(p => p.MainWindowHandle != IntPtr.Zero).OrderByDescending(p => p.StartTime).ToList();
-        return procs.FirstOrDefault() ?? throw new ToolException($"No window of '{app}' is open.");
+        return CaptureTools.FindProcess(Json.Str(a, "app"), 0);
     }
 
     public static void Register(ToolRegistry r)
@@ -46,9 +43,9 @@ public static class UiTools
         r.Add(new Tool
         {
             Name = "screenshot", Title = "Screenshot of an application", Toolset = "ui", ReadOnly = true,
-            Description = "Capture the main window of an application (or the whole screen) as an image so you can SEE the current state: model view, dialogs, results.",
-            InputSchema = Obj(appP, pidP, O("fullScreen", Bool("Capture the primary screen")), O("maxWidth", Int("Downscale to this width (default 1600)"))),
-            Handler = (a, ctx) => Capture(a)
+            Description = "Same as capture (kept for compatibility): picture of an application window or the screen so you can SEE the current state.",
+            InputSchema = Obj(appP, pidP, O("fullScreen", Bool("Capture the whole desktop")), O("window", Str("Dialog/window title contains")), O("grid", Bool("Overlay a screen-coordinate grid")), O("maxWidth", Int("Downscale to this width (default 1568)"))),
+            Handler = (a, ctx) => CaptureTools.Capture(a)
         });
 #if WINDOWS
         r.Add(new Tool
@@ -180,41 +177,6 @@ public static class UiTools
         var sb = new System.Text.StringBuilder();
         foreach (var c in s) sb.Append("+^%~(){}[]".IndexOf(c) >= 0 ? "{" + c + "}" : c.ToString());
         return sb.ToString();
-    }
-
-    static object Capture(Dictionary<string, object> a)
-    {
-#if WINDOWS
-        int x, y, w, h;
-        if (Json.Bool(a, "fullScreen") || (Json.Get(a, "app") == null && Json.Get(a, "pid") == null))
-        {
-            var b = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
-            x = b.X; y = b.Y; w = b.Width; h = b.Height;
-        }
-        else
-        {
-            var p = FindProcess(a);
-            Focus(p);
-            GetWindowRect(p.MainWindowHandle, out var r);
-            x = r.Left; y = r.Top; w = r.Right - r.Left; h = r.Bottom - r.Top;
-        }
-        using var bmp = new System.Drawing.Bitmap(Math.Max(1, w), Math.Max(1, h));
-        using (var g = System.Drawing.Graphics.FromImage(bmp)) g.CopyFromScreen(x, y, 0, 0, bmp.Size);
-        int maxW = (int)Json.Int(a, "maxWidth", 1600);
-        System.Drawing.Bitmap outBmp = bmp;
-        if (w > maxW)
-        {
-            outBmp = new System.Drawing.Bitmap(bmp, new System.Drawing.Size(maxW, (int)(h * (double)maxW / w)));
-        }
-        using var ms = new MemoryStream();
-        outBmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-        if (!ReferenceEquals(outBmp, bmp)) outBmp.Dispose();
-        var file = Path.Combine(BurakPaths.Sub("captures"), "capture-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png");
-        File.WriteAllBytes(file, ms.ToArray());
-        return new ImageResult { Base64 = Convert.ToBase64String(ms.ToArray()), Caption = $"Screen region {x},{y} {w}x{h} (saved {file})" };
-#else
-        throw new ToolException("Screenshots need the Windows build of BURAK BIM.");
-#endif
     }
 
 #if WINDOWS

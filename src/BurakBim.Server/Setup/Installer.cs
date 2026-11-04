@@ -1,0 +1,312 @@
+using System.Text;
+using BurakBim.Server.Detection;
+using BurakBim.Shared;
+using Microsoft.Win32;
+
+namespace BurakBim.Server.Setup;
+
+/// <summary>
+/// 1.3: the whole installation in plain C#, run by Setup.exe as "BurakBim.Server.exe --install".
+/// No PowerShell, no hidden windows, no scheduled tasks, no downloads, no admin rights - the patterns antivirus
+/// heuristics dislike are gone. (installer\install.ps1 remains for advanced/offline-compile cases.)
+///
+///   --install   [--home DIR] [--clients auto|none|id,id] [--skills-for-claude-code]
+///   --uninstall [--home DIR] [--keep-clients]
+///   --rescan    (connect versions installed later; same as --install without touching AI clients)
+/// </summary>
+public static class Installer
+{
+    const string RevitAddInId = "8E3B2F7A-4C1D-4B9E-A2F5-6D7C8B9A0E1F";
+    static readonly StringBuilder LogText = new();
+    static int _warnings;
+
+    static void Say(string s) { Console.WriteLine(s); LogText.AppendLine(s); }
+    static void Ok(string s) => Say("    [OK] " + s);
+    static void Warn(string s) { _warnings++; Say("    [!]  " + s); }
+    static void Step(string s) => Say("\n==> " + s);
+
+    static string Setup => Path.Combine(BurakPaths.Root, "setup");
+
+    static string? Arg(string[] args, string name) => args.SkipWhile(a => !a.Equals(name, StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault(a => !a.StartsWith("--"));
+
+    public static int Install(string[] args, bool rescan = false)
+    {
+        if (!OperatingSystem.IsWindows()) { Console.WriteLine("BURAK BIM installs on Windows (the BIM applications it connects to are Windows programs)."); return 1; }
+        var root = BurakPaths.Root;
+        Say($"BURAK BIM {BurakInfo.Version} - {(rescan ? "rescan" : "install")} - folder {root}");
+        foreach (var sub in new[] { "server", "bridges", "config", "runtime", "logs", "audit", "reports", "exports", "scratch", "captures", "toolpacks" })
+            Directory.CreateDirectory(Path.Combine(root, sub));
+        File.WriteAllText(Path.Combine(root, "burakbim.root"), $"BURAK BIM {BurakInfo.Version} install root");
+        try
+        {
+            using var k = Registry.CurrentUser.CreateSubKey(@"Software\BURAK BIM");
+            k.SetValue("InstallDir", root); k.SetValue("Version", BurakInfo.Version);
+        }
+        catch (Exception ex) { Warn("registry: " + ex.Message); }
+
+        RemoveOldSentinel();
+
+        Step("Removing 'downloaded from the internet' marks (so Revit / AutoCAD / Navisworks can load the bridges)");
+        int unblocked = 0;
+        foreach (var dir in new[] { Path.Combine(root, "server"), Setup, Path.Combine(root, "bridges") })
+            unblocked += Unblock(dir);
+        Ok($"{unblocked} file(s) unblocked");
+
+        Step("Detecting software");
+        var products = SoftwareDetector.Detect(true);
+        if (products.Count == 0) Warn("No supported software found. BURAK BIM is installed anyway; run 'BurakBim.Server.exe --rescan' after installing your BIM software.");
+        foreach (var p in products.OrderBy(p => p.Family).ThenBy(p => p.Year))
+            Say($"    {p.Name,-50} {string.Join("+", p.Control)}");
+
+        Step("Installing bridges (prebuilt for every version, no internet needed)");
+        var installed = new List<string>();
+        var missing = new List<string>();
+        foreach (var g in products.Where(p => p.Family is "revit" or "autocad" or "navisworks" && p.Year >= 2022 && p.Year <= 2030)
+                                  .GroupBy(p => (p.Family, p.Year)))
+        {
+            var (fam, year) = g.Key;
+            var src = Path.Combine(Setup, "prebuilt", fam, year.ToString());
+            var dst = Path.Combine(root, "bridges", fam, year.ToString());
+            if (!Directory.Exists(src) || Directory.GetFiles(src, "BurakBim.Bridge.*.dll").Length == 0)
+            {
+                // keep an existing (locally compiled) bridge
+                if (Directory.Exists(dst) && Directory.GetFiles(dst, "BurakBim.Bridge.*.dll").Length > 0) { installed.Add($"{fam}-{year}"); Ok($"{fam} {year}: existing bridge kept"); }
+                else missing.Add($"{fam}-{year}");
+                continue;
+            }
+            try
+            {
+                CopyDir(src, dst);
+                var shared = Path.Combine(Setup, "prebuilt", "_shared");
+                if (Directory.Exists(shared)) CopyDir(shared, Path.Combine(root, "bridges", "_shared"));
+                installed.Add($"{fam}-{year}");
+                Ok($"{fam} {year}: bridge installed");
+            }
+            catch (IOException ex) { Warn($"{fam} {year}: files are in use - close {fam} and run setup again ({ex.Message})"); }
+        }
+        foreach (var m in missing)
+            Warn($"{m}: no prebuilt bridge in this package. Run 'powershell -File \"{Path.Combine(Setup, "installer", "install.ps1")}\" -LocalBuild' to compile it on this PC, or update BURAK BIM. Capture + computer control still work for it.");
+
+        Step("Registering with the applications");
+        RegisterRevit(installed);
+        RegisterAutoCad(installed, products);
+        RegisterNavisworks(installed);
+
+        if (!File.Exists(Path.Combine(root, "config", "burakbim.json")))
+            File.WriteAllText(Path.Combine(root, "config", "burakbim.json"), Json.Serialize(Core.Config.Defaults(), true), new UTF8Encoding(false));
+        File.WriteAllText(Path.Combine(root, "config", "installed.json"), Json.Serialize(Json.O("version", BurakInfo.Version, "updated", DateTime.Now.ToString("s"),
+            "installDir", root, "bridges", installed.Cast<object>().ToList(), "missing", missing.Cast<object>().ToList()), true), new UTF8Encoding(false));
+
+        if (!rescan)
+        {
+            var clients = Arg(args, "--clients") ?? "auto";
+            if (clients != "none")
+            {
+                Step("Connecting AI apps");
+                var rep = ClientConnector.Connect(clients);
+                foreach (var r in rep)
+                    if (Json.Bool(r, "ok")) Ok($"{Json.Str(r, "client")} -> {Json.Str(r, "file")}");
+                    else Warn($"{Json.Str(r, "client")}: {Json.Str(r, "error")}");
+                if (rep.Count == 0) Say("    No AI apps found. Install one, then run 'BurakBim.Server.exe --connect-clients'.");
+            }
+            Step("Installing BIM workflow skills");
+            InstallSkills();
+        }
+
+        Step("Self-check");
+        Say("    " + (SelfCheck() ? "MCP handshake OK - AI apps can start BURAK BIM" : "MCP handshake FAILED - see logs"));
+
+        Say(_warnings == 0 ? $"\nBURAK BIM {BurakInfo.Version} installed." : $"\nBURAK BIM {BurakInfo.Version} installed with {_warnings} note(s) - see above.");
+        Say("Next: fully quit and restart your AI app, open your BIM software, and ask: \"Use BURAK BIM: burak_status\".");
+        try { File.WriteAllText(Path.Combine(root, "logs", $"install-{DateTime.Now:yyyyMMdd-HHmmss}.log"), LogText.ToString()); } catch { }
+        return 0;
+    }
+
+    public static int Uninstall(string[] args)
+    {
+        var root = BurakPaths.Root;
+        Say("BURAK BIM uninstall - " + root);
+        RemoveOldSentinel();
+        if (!args.Contains("--keep-clients"))
+            foreach (var r in ClientConnector.Disconnect()) Ok("removed from " + Json.Str(r, "client"));
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        for (int y = 2022; y <= 2030; y++)
+        {
+            var f = Path.Combine(appData, "Autodesk", "Revit", "Addins", y.ToString(), "BurakBim.addin");
+            try { if (File.Exists(f) && File.ReadAllText(f).Contains(RevitAddInId)) { File.Delete(f); Ok("removed " + f); } } catch { }
+        }
+        foreach (var b in new[] { "BurakBim.AutoCAD.bundle", "BurakBim.Navisworks.bundle" })
+        {
+            var p = Path.Combine(appData, "Autodesk", "ApplicationPlugins", b);
+            try { if (Directory.Exists(p)) { Directory.Delete(p, true); Ok("removed " + p); } } catch (Exception ex) { Warn(p + ": " + ex.Message); }
+        }
+        try
+        {
+            var skills = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "skills");
+            if (Directory.Exists(skills)) foreach (var d in Directory.GetDirectories(skills, "burak-bim-*")) Directory.Delete(d, true);
+        }
+        catch { }
+        try { Registry.CurrentUser.DeleteSubKeyTree(@"Software\BURAK BIM", false); } catch { }
+        foreach (var sub in new[] { "bridges", "runtime", "scratch", "cache", "tools" })
+            try { var d = Path.Combine(root, sub); if (Directory.Exists(d)) Directory.Delete(d, true); } catch { }
+        Say("Done. Audit trail, reports, exports, config and logs were kept in " + root);
+        return 0;
+    }
+
+    // ------------------------------------------------------------------ registration
+    static void RegisterRevit(List<string> installed)
+    {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        foreach (var key in installed.Where(k => k.StartsWith("revit-")))
+        {
+            var year = key[6..];
+            var dll = Path.Combine(BurakPaths.Root, "bridges", "revit", year, "BurakBim.Bridge.Revit.dll");
+            var dir = Path.Combine(appData, "Autodesk", "Revit", "Addins", year);
+            Directory.CreateDirectory(dir);
+            var xml = $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<RevitAddIns>
+  <AddIn Type=""Application"">
+    <Name>BURAK BIM</Name>
+    <Assembly>{System.Security.SecurityElement.Escape(dll)}</Assembly>
+    <AddInId>{RevitAddInId}</AddInId>
+    <FullClassName>BurakBim.Bridge.Revit.RevitApp</FullClassName>
+    <VendorId>BURAKBIM</VendorId>
+    <VendorDescription>BURAK BIM - AI connector for Revit</VendorDescription>
+  </AddIn>
+</RevitAddIns>
+";
+            File.WriteAllText(Path.Combine(dir, "BurakBim.addin"), xml, new UTF8Encoding(false));
+            Ok($"Revit {year}: add-in registered (BURAK BIM tab)");
+        }
+    }
+
+    static readonly Dictionary<int, string> AcadRelease = new() { [2022] = "R24.1", [2023] = "R24.2", [2024] = "R24.3", [2025] = "R25.0", [2026] = "R25.1", [2027] = "R26.0", [2028] = "R26.1" };
+
+    static void RegisterAutoCad(List<string> installed, List<Product> products)
+    {
+        var years = installed.Where(k => k.StartsWith("autocad-")).Select(k => int.Parse(k[8..])).OrderBy(y => y).ToList();
+        if (years.Count == 0) return;
+        var bundle = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Autodesk", "ApplicationPlugins", "BurakBim.AutoCAD.bundle");
+        var comps = new StringBuilder();
+        foreach (var y in years)
+        {
+            var contents = Path.Combine(bundle, "Contents", y.ToString());
+            Directory.CreateDirectory(contents);
+            var bridgeDir = Path.Combine(BurakPaths.Root, "bridges", "autocad", y.ToString());
+            File.Copy(Path.Combine(bridgeDir, "BurakBim.Bridge.AutoCAD.dll"), Path.Combine(contents, "BurakBim.Bridge.AutoCAD.dll"), true);
+            File.WriteAllText(Path.Combine(contents, "burakbim.probe"), bridgeDir);
+            // the registry release (e.g. R24.3) of every installed AutoCAD-based product of that year
+            var releases = products.Where(p => p.Family == "autocad" && p.Year == y && p.AcadRegKey != null)
+                .Select(p => p.AcadRegKey!.Split('\\').FirstOrDefault(s => s.StartsWith("R") && s.Contains('.')))
+                .Where(r => r != null).Distinct().ToList();
+            if (releases.Count == 0 && AcadRelease.TryGetValue(y, out var rel)) releases.Add(rel);
+            foreach (var r in releases)
+                comps.Append($@"  <Components Description=""{r}"">
+    <RuntimeRequirements OS=""Win64"" Platform=""AutoCAD*"" SeriesMin=""{r}"" SeriesMax=""{r}"" />
+    <ComponentEntry AppName=""BurakBim{y}"" ModuleName=""./Contents/{y}/BurakBim.Bridge.AutoCAD.dll"" AppDescription=""BURAK BIM AI connector"" LoadOnAutoCADStartup=""True"" />
+  </Components>
+");
+            Ok($"AutoCAD-family {y}: bridge staged (AutoCAD, Civil 3D, Plant 3D, Map 3D, MEP, Advance Steel ...)");
+        }
+        File.WriteAllText(Path.Combine(bundle, "PackageContents.xml"), $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<ApplicationPackage SchemaVersion=""1.0"" AutodeskProduct=""AutoCAD"" ProductType=""Application"" Name=""BURAK BIM"" Description=""BURAK BIM - AI connector for AutoCAD and AutoCAD-based products"" AppVersion=""{BurakInfo.Version}"" Author=""BURAK BIM"" ProductCode=""{{5F2C9A41-7B3E-4D2A-9C61-1E8B0D4F7A22}}"" UpgradeCode=""{{0B7E4D19-3A6C-4F58-8E2D-6C1A9F3B5D70}}"">
+  <CompanyDetails Name=""BURAK BIM"" />
+{comps}</ApplicationPackage>
+", new UTF8Encoding(false));
+    }
+
+    static void RegisterNavisworks(List<string> installed)
+    {
+        var years = installed.Where(k => k.StartsWith("navisworks-")).Select(k => int.Parse(k[11..])).OrderBy(y => y).ToList();
+        if (years.Count == 0) return;
+        var bundle = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Autodesk", "ApplicationPlugins", "BurakBim.Navisworks.bundle");
+        var comps = new StringBuilder();
+        foreach (var y in years)
+        {
+            var contents = Path.Combine(bundle, "Contents", y.ToString());
+            Directory.CreateDirectory(contents);
+            var bridgeDir = Path.Combine(BurakPaths.Root, "bridges", "navisworks", y.ToString());
+            File.Copy(Path.Combine(bridgeDir, "BurakBim.Bridge.Navisworks.dll"), Path.Combine(contents, "BurakBim.Bridge.Navisworks.dll"), true);
+            File.WriteAllText(Path.Combine(contents, "burakbim.probe"), bridgeDir);
+            var series = "Nw" + (y - 2003);
+            foreach (var plat in new[] { "NAVMAN", "NAVSIM" })
+                comps.Append($@"  <Components>
+    <RuntimeRequirements OS=""Win64"" Platform=""{plat}"" SeriesMin=""{series}"" SeriesMax=""{series}"" />
+    <ComponentEntry AppName=""BurakBim.Navisworks.{y}.{plat}"" AppType=""ManagedPlugin"" ModuleName=""./Contents/{y}/BurakBim.Bridge.Navisworks.dll"" />
+  </Components>
+");
+            Ok($"Navisworks {y}: plug-in staged");
+        }
+        File.WriteAllText(Path.Combine(bundle, "PackageContents.xml"), $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<ApplicationPackage SchemaVersion=""1.0"" AppVersion=""{BurakInfo.Version}"" AutodeskProduct=""Navisworks"" Name=""BURAK BIM"" Description=""BURAK BIM - AI connector for Navisworks"" ProductCode=""{{A3D1E6B2-58C4-4F0B-9E7A-2D4C6B8F1E33}}"">
+  <CompanyDetails Name=""BURAK BIM"" />
+{comps}</ApplicationPackage>
+", new UTF8Encoding(false));
+    }
+
+    // ------------------------------------------------------------------ skills for Claude Code / Claude Desktop skill folders
+    static void InstallSkills()
+    {
+        var all = Skills.SkillLibrary.All();
+        Ok($"{all.Count} skills built into the server (every AI app: burak_skills tool, MCP prompts and resources)");
+        try
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!Directory.Exists(Path.Combine(home, ".claude"))) return;
+            var dir = Path.Combine(home, ".claude", "skills");
+            foreach (var s in all)
+            {
+                var d = Path.Combine(dir, "burak-bim-" + s.Name);
+                Directory.CreateDirectory(d);
+                File.WriteAllText(Path.Combine(d, "SKILL.md"), s.Markdown, new UTF8Encoding(false));
+            }
+            Ok($"Claude Code: skills copied to {dir}");
+        }
+        catch (Exception ex) { Warn("skills for Claude Code: " + ex.Message); }
+    }
+
+    // ------------------------------------------------------------------ helpers
+    /// <summary>Versions before 1.3 registered a logon task that ran PowerShell. 1.3 has none, so an upgrade removes it.</summary>
+    static void RemoveOldSentinel()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("schtasks.exe", "/Delete /TN \"BURAK BIM Sentinel\" /F") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            using var p = System.Diagnostics.Process.Start(psi)!;
+            p.StandardOutput.ReadToEnd(); p.StandardError.ReadToEnd();
+            p.WaitForExit(15000);
+            if (p.HasExited && p.ExitCode == 0) Ok("Old logon task 'BURAK BIM Sentinel' removed");
+        }
+        catch (Exception ex) { Warn("Could not remove the old logon task: " + ex.Message); }
+    }
+
+    static int Unblock(string dir)
+    {
+        int n = 0;
+        if (!Directory.Exists(dir)) return 0;
+        foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+        {
+            try { var ads = f + ":Zone.Identifier"; if (File.Exists(ads)) { File.Delete(ads); n++; } } catch { }
+        }
+        return n;
+    }
+
+    static void CopyDir(string src, string dst)
+    {
+        Directory.CreateDirectory(dst);
+        foreach (var f in Directory.GetFiles(src)) File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), true);
+        foreach (var d in Directory.GetDirectories(src)) CopyDir(d, Path.Combine(dst, Path.GetFileName(d)));
+    }
+
+    static bool SelfCheck()
+    {
+        try
+        {
+            var server = new Mcp.McpServer(Program.BuildRegistry());
+            var init = server.Dispatch(Json.O("jsonrpc", "2.0", "id", 1, "method", "initialize", "params", Json.O("protocolVersion", "2025-06-18", "clientInfo", Json.O("name", "burak-installer"))));
+            var list = server.Dispatch(Json.O("jsonrpc", "2.0", "id", 2, "method", "tools/list"));
+            return init != null && list != null && Json.Obj(list, "result") != null;
+        }
+        catch { return false; }
+    }
+}

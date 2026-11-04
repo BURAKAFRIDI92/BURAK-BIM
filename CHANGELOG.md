@@ -1,5 +1,79 @@
 # Changelog
 
+## 1.3.0 (2026-11-04) - works everywhere, sees the model, reaches every command
+
+### Installer ZIP and fixes
+- **`BURAK-BIM-Installer-1.3.0-win-x64.zip`** is the download for most users: `BURAK-BIM-Installer.exe`, `BURAK-BIM-Uninstaller.exe`, a short guide, the Claude Desktop extension and SHA-256 checksums.
+- **Standalone uninstaller.** It finds the install folder from the registry and runs the uninstaller of the installed version, so it also removes older versions.
+- **Upgrades remove the old logon task.** The "BURAK BIM Sentinel" task from older versions ran hidden PowerShell at logon. 1.3 no longer creates it, and both install and uninstall now delete it.
+- **`bluebeam_script` works in folders with spaces**, including the default `D:\BURAK BIM`. The script path was passed without quotes.
+- **Setup honours `/D=<folder>`** and never waits on a message box during a silent install.
+- **CI now installs and uninstalls the ZIP** on a clean Windows machine, and fails if a skill names a tool that does not exist.
+
+### BIM workflow skills: the method, not just the tools
+- There are **28 professional workflow skills**. New for BIM management and VDC: `bim-vdc-router`, `bim-project-setup`, `bim-qa-gate`, `bim-handover`, `vdc-4d-scheduling`, `vdc-5d-quantities`, `drawing-review-cycle`, `rhino-grasshopper-computational`, plus each the step-by-step method an experienced BIM/VDC engineer follows:
+  - **Base methods:** `bim-base`, `revit-base`, `computer-control`.
+  - **Revit:** `revit-model-health`, `revit-documentation`, `revit-document-control-iso19650`, `revit-architecture-modeling`, `revit-structure-modeling`, `revit-mep-modeling` (HVAC, plumbing/piping, electrical), `revit-scan-to-bim`, `revit-family-creation`.
+  - **Coordination:** `bim-coordination` (Navisworks clash cycle).
+  - **Structural analysis:** `csi-structural-analysis` (ETABS/SAP2000).
+  - **Takeoff:** `bluebeam-takeoff`, `planswift-takeoff`.
+  - **Other applications:** `autocad-civil3d-base`, `autocad-cut-files`, `civil3d-site`, `archicad-modeling`.
+- Each skill applies the same rules: counts before detail, focused queries, bulk changes, a preview with user approval, and verification in the application.
+- Skills reach **every** AI app in three ways: the `burak_skills` tool (list, get, or suggest for a task), MCP **prompts** (`skill-<name>`) and MCP **resources** (`burak://skills/<name>`).
+- The installer also copies the skills into Claude Code (`~/.claude/skills`).
+- Company-specific skills: drop `SKILL.md` folders into `<install>\skills`.
+
+### Installs cleanly: no antivirus alarms
+- Setup.exe now runs `BurakBim.Server.exe --install`, which is plain C#. It uses no PowerShell, no hidden windows and no "ExecutionPolicy Bypass", installs no logon scheduled task, downloads nothing and needs no admin rights.
+- The server ships as a normal self-contained **folder**, instead of a self-extracting single file that unpacked itself into %TEMP%.
+- Full version information and an application manifest (asInvoker, per-monitor DPI, long paths) are included.
+- **Code signing is built into the release pipeline.** Add a certificate as GitHub secrets and every exe, DLL and Setup.exe is signed. This removes the SmartScreen "unknown publisher" warning.
+- The release ZIP now contains `BURAK-BIM-Setup-1.3.0.exe`, `BURAK-BIM.mcpb` and the full package.
+- New commands: `--install`, `--rescan`, `--uninstall`. Start menu: *Repair - detect new software*.
+
+### Reliability: the "it doesn't work in my Revit version / it doesn't connect" fixes
+- **Prebuilt bridges for every version.** Revit 2022-2027, AutoCAD and all AutoCAD-based products 2022-2027, and Navisworks are compiled in CI against each year's own API, with C# scripting included. The installer no longer downloads a .NET SDK or compiles anything on the user's PC.
+  - 1.2 needed internet access to dot.net and nuget.org during setup, so company firewalls made it fall back to a Revit-2024-only bridge and a server that required a separate .NET runtime.
+- **Self-contained server.** `BurakBim.Server.exe` runs on any Windows 10/11 x64 PC with no .NET installed.
+- **Offline fallback compiler.** A version without a prebuilt bridge, for example a future service pack, is compiled on the PC with the bundled Roslyn compiler (`tools\roslyn`) against the installed product's DLLs. No internet is needed.
+- **Download marks removed.** Files extracted from a downloaded ZIP are blocked by Windows, and .NET Framework hosts (Revit 2022-2024, AutoCAD 2022-2024, Navisworks) refused to load them (0x80131515). The installer now unblocks everything it installs.
+- **Revit add-in starts the connector before building the ribbon.** A ribbon problem (tab-name clash with another add-in, localized Revit) can no longer leave the AI without a connection.
+- **Version-aware dependency loading.** If another add-in (Dynamo, pyRevit...) already loaded an older Roslyn, BURAK BIM loads its own copy instead of failing.
+- **AutoCAD 2027 bridge targets .NET 10.** AutoCAD 2025-2026 stays on .NET 8, which also loads in AutoCAD 2026 Update 1.2 and later.
+
+### AI apps: Claude, ChatGPT/Codex, Antigravity, Cursor, VS Code and more
+- **Per-client compatibility profiles.** VS Code/Copilot and OpenAI-based clients reject more than 128 tools, Cursor and Windsurf cap active tools, and Gemini/Antigravity reject some JSON-schema keywords. Each client now gets a tool list and schemas it accepts: running applications' tools come first, and everything else stays reachable through `burak_tools` + `burak_run`.
+- **Schema sanitizer.** It inlines `$ref`, flattens `oneOf`/`anyOf`/`allOf` and type arrays, and in strict clients removes `additionalProperties`, `format` and `default`.
+- **Protocol cleanup.** stdout is reserved for the protocol; stray output goes to stderr. The server supports MCP 2025-11-25, JSON-RPC batches and `completion/complete`.
+- **Faster start.** Software detection is cached on disk, so `tools/list` answers instantly.
+- **`--connect-clients`.** The server exe itself connects Claude Desktop (classic + Microsoft Store), Claude Code, Codex (CLI / IDE / ChatGPT desktop Codex), Cursor, Windsurf, Google Antigravity, Gemini CLI, VS Code (+ Insiders), Visual Studio, Cline, Roo Code, Kilo Code, LM Studio, Kiro, Amazon Q, Trae, Continue, opencode and Zed. It writes strict JSON without a BOM, verifies each file and keeps `*.burakbim.bak` backups. Also available as `--disconnect-clients`, `--list-clients` and the tool `burak_connect_clients`.
+- **Claude Desktop extension.** `BURAK-BIM.mcpb` installs with a double-click.
+- **Local Streamable HTTP transport.** `--http [port]` serves clients that cannot start a process (LM Studio, Open WebUI/mcpo, n8n, custom agents).
+- **The installer checks the real MCP handshake**, the same one every AI client performs.
+- `--mcp-selftest` checks every client profile, tool limit and schema in CI.
+
+### Capture mode: the AI sees what is going on
+- `revit_capture` renders any Revit view (floor/ceiling plans, sections, elevations, 3D, drafting views, legends, sheets) through the API. It works even when the view is not open or the window is covered, and returns view facts: scale, detail level, level and element counts.
+- `revit_capture_views` lists the views that can be captured.
+- `capture` takes a picture of any application window or dialog (Revit, AutoCAD/Civil 3D, Navisworks, ETABS, SAP2000, CSiBridge, SAFE, Archicad, Bluebeam, PlanSwift, Excel...), a monitor, the whole desktop or a region. It uses PrintWindow, so covered windows work, and has an optional screen-coordinate grid.
+- `capture_mode` is on by default: every change returns a picture of the result.
+
+### Computer control with the user's permission
+- `computer_request_control` shows a Yes/No dialog on the user's screen with the AI's reason. Permission is time-limited.
+- After approval: `computer_screenshot`, `computer_click`, `computer_type` (exact Unicode, independent of keyboard layout), `computer_key`, `computer_drag`, `computer_scroll`, `computer_move`, `computer_focus`, `computer_windows`, `computer_open`, `computer_wait` and `computer_release_control`. Each action returns a screenshot.
+- A red banner shows while control is active, and **Ctrl+Alt+Q** stops it instantly.
+- The process is per-monitor DPI-aware, so clicks land on the exact pixel on scaled displays and multi-monitor setups.
+- `"allowComputerControl": false` disables it for the whole company.
+- When a tool fails because no API exists, the error tells the agent how to fall back to computer control.
+
+### New connectors
+- **CSI SAP2000 / ETABS / CSiBridge / SAFE** (OAPI v1, any version): `csi_status`, `csi_units`, `csi_file`, `csi_unlock`, `csi_points`, `csi_frames`, `csi_areas`, `csi_sections`, `csi_loads`, `csi_analyze`, `csi_results` (reactions, displacements, frame/area forces, modal, story drifts/forces), `csi_design`, `csi_select`, `csi_register_api`, `csi_members`, and `csi_call`. `csi_call` reaches every OAPI function: by-reference outputs are created and returned automatically from the type library.
+- **Bluebeam Revu** (every edition): `bluebeam_status`, `bluebeam_open`, `bluebeam_markups` (subject, author, page, measurement value and unit, layer, status, custom columns, read straight from the PDF), `bluebeam_takeoff_summary`, and `bluebeam_script` (ScriptEngine, eXtreme/Complete).
+- **PDF tools:** `pdf_info` and `pdf_text`.
+- **PlanSwift** (COM): `planswift_status`, `planswift_tree`, `planswift_quantities`, `planswift_item`, `planswift_set`, `planswift_new_item` and `planswift_call`.
+- **Detection** of SAP2000, ETABS, CSiBridge, SAFE, Bluebeam Revu, PlanSwift, Archicad (any folder), Tekla Structures and SketchUp.
+- **`ComTyped`:** type-library-aware COM calls with by-reference parameters and enum names, for any COM application.
+
 ## 1.2.0 (2026-10-21) - about 1,000 tools, company logo, installs anywhere
 
 - **Company logo everywhere:** the BURAK-BIM logo is now the MCP server icon shown by AI clients, the Revit ribbon button images, the Setup / uninstaller icon, the installer pages, the Apps & Features icon, the header of the HTML inspection reports and the README.

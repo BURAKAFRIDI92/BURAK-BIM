@@ -61,21 +61,56 @@ namespace BurakBim.Bridge
 
         public static void Register(params string[] dirs)
         {
+            // 1.3: prebuilt bridges share one copy of Roslyn & co. in <install>\bridges\_shared\<net48|netcore>
+            var kind = typeof(object).Assembly.GetName().Name == "mscorlib" ? "net48" : "netcore";
+            var all = new List<string>();
             foreach (var d in dirs)
-                if (!string.IsNullOrEmpty(d) && Directory.Exists(d) && !Probe.Contains(d)) Probe.Add(d);
+            {
+                if (string.IsNullOrEmpty(d)) continue;
+                all.Add(d);
+                try
+                {
+                    var bridges = Path.GetDirectoryName(Path.GetDirectoryName(d.TrimEnd('\\', '/')));
+                    if (!string.IsNullOrEmpty(bridges)) all.Add(Path.Combine(bridges, "_shared", kind));
+                }
+                catch { }
+            }
+            foreach (var d in all)
+                if (Directory.Exists(d) && !Probe.Contains(d)) Probe.Add(d);
             if (_hooked) return;
             _hooked = true;
             AppDomain.CurrentDomain.AssemblyResolve += (s, e) =>
             {
-                var name = new AssemblyName(e.Name).Name;
+                // 1.3: version-aware. Another add-in (Dynamo, pyRevit, ...) may already have loaded an OLDER copy of a
+                // dependency we ship (e.g. Microsoft.CodeAnalysis). Returning that older copy caused MissingMethodException
+                // in some Revit/AutoCAD sessions, so an already-loaded assembly is only reused when its version is high enough.
+                AssemblyName req;
+                try { req = new AssemblyName(e.Name); } catch { return null; }
+                var name = req.Name;
+                Assembly loadedMatch = null;
                 foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
-                    if (string.Equals(a.GetName().Name, name, StringComparison.OrdinalIgnoreCase)) return a;
+                {
+                    try
+                    {
+                        var an = a.GetName();
+                        if (!string.Equals(an.Name, name, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (req.Version == null || an.Version == null || an.Version >= req.Version) return a;
+                        loadedMatch = a;
+                    }
+                    catch { }
+                }
                 foreach (var dir in Probe)
                 {
                     var f = Path.Combine(dir, name + ".dll");
-                    if (File.Exists(f)) { try { return Assembly.LoadFrom(f); } catch { } }
+                    if (!File.Exists(f)) continue;
+                    try
+                    {
+                        var fileVer = AssemblyName.GetAssemblyName(f).Version;
+                        if (req.Version == null || fileVer == null || fileVer >= req.Version || loadedMatch == null) return Assembly.LoadFrom(f);
+                    }
+                    catch { }
                 }
-                return null;
+                return loadedMatch;
             };
         }
     }

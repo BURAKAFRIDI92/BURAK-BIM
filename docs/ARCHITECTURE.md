@@ -27,6 +27,15 @@
  └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## 1.3 additions
+- `Mcp/ClientProfile.cs`: per-AI-client tool limits and the schema sanitizer. `Mcp/McpSelfTest.cs`: `--mcp-selftest`. `Mcp/HttpTransport.cs`: `--http`.
+- `Setup/ClientConnector.cs`: `--connect-clients`, `--disconnect-clients` and `--list-clients` for 19 AI apps.
+- `Tools/CaptureTools.cs`: `capture`, `revit_capture` (bridge method `revit.capture` in `Bridge.Revit/RevitCapture.cs`) and capture mode.
+- `Core/Consent.cs` + `Tools/ComputerTools.cs`: consented computer control (dialog on the user's screen, banner, Ctrl+Alt+Q). `Core/Native.cs`: SendInput, PrintWindow and DPI awareness.
+- `Com/ComTyped.cs`: type-library-aware COM calls with by-ref outputs. It is used by `Tools/CsiTools.cs` (SAP2000/ETABS/CSiBridge/SAFE) and `Tools/PlanSwiftTools.cs`.
+- `Tools/BluebeamTools.cs`: Bluebeam markups and PDFs (UglyToad.PdfPig) and ScriptEngine.
+- **Prebuilt bridges:** CI compiles every host and year into `prebuilt/<host>/<year>`, with one shared copy of Roslyn in `prebuilt/_shared/<net48|netcore>`. `BridgeAssemblyResolver` probes `bridges/_shared`, and is version-aware.
+
 ## Bridge core (shared by every host)
 `src/BurakBim.Bridge.Core` is compiled into every bridge:
 

@@ -19,6 +19,13 @@ public sealed class ImageResult
     public string? Caption { get; init; }
 }
 
+/// <summary>1.3: several images plus structured data in one tool result (e.g. Revit capture of several views).</summary>
+public sealed class RichResult
+{
+    public List<ImageResult> Images { get; } = new();
+    public object? Data { get; set; }
+}
+
 public sealed class Tool
 {
     public required string Name { get; init; }
@@ -32,6 +39,9 @@ public sealed class Tool
     public bool OpenWorld { get; init; }
     /// <summary>Tool-pack / generated catalog tool: listed in full exposure, found via burak_tools + burak_run in compact exposure.</summary>
     public bool Extended { get; init; }
+    /// <summary>1.3: listing priority when an AI client can only take a limited number of tools (higher = listed first).
+    /// 0 = automatic (by toolset). Essential tools (status, search/run, capture, computer control) are always listed.</summary>
+    public int Priority { get; init; }
     public required Func<Dictionary<string, object>, ToolContext, object?> Handler { get; init; }
 
     public Dictionary<string, object> ToJson() => Json.O(

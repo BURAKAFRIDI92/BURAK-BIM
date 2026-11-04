@@ -38,9 +38,11 @@ public static class CoreTools
                 }).ToList();
                 var com = new List<object>();
                 if (OperatingSystem.IsWindows())
-                    foreach (var prog in new[] { "Inventor.Application", "AutoCAD.Application", "Robot.Application" })
+                    foreach (var prog in new[] { "Inventor.Application", "AutoCAD.Application", "Robot.Application", "CSI.ETABS.API.ETABSObject", "CSI.SAP2000.API.SapObject", "CSI.CSiBridge.API.SapObject", "PlanSwift9.PlanCenter" })
                         try { if (Com.ComInterop.GetActive(prog) != null) com.Add(prog); } catch { }
                 return Json.O("burakBim", BurakInfo.Version, "installDir", BurakPaths.Root,
+                    "aiClient", Mcp.McpServer.Current?.ClientName, "captureMode", CaptureTools.Mode, "computerControl", Consent.Active ? "granted" : "not granted (computer_request_control)",
+                    "runningApps", SoftwareDetector.RunningFamilies().Cast<object>().ToList(),
                     "readOnly", Config.ReadOnly, "scripting", Config.AllowScripts,
                     "installed", products, "liveBridges", bridges, "runningComApps", com,
                     "tip", bridges.Count == 0 ? "No bridge is live. Open Revit / AutoCAD / Civil 3D / Navisworks (BURAK BIM loads automatically) or use burak_launch." : "Use the app-specific tools; anything else via ribbon_invoke / api_* / script_run.");
@@ -112,7 +114,7 @@ public static class CoreTools
         r.Add(new Tool
         {
             Name = "burak_config", Title = "View / change BURAK BIM settings", Toolset = "core", ReadOnly = false,
-            Description = "Show settings, or set one: readOnly (block all changes), allowScripts, allowComAutomation, allowUiAutomation, toolsets ([\"auto\"] = tools for installed software; [\"all\"]; or a list: core, api, revit, scan, inspector, autocad, navisworks, inventor, recap, com, ui), inspectorName, requestTimeoutSeconds.",
+            Description = "Show settings, or set one: readOnly (block all changes), allowScripts, allowComAutomation, allowUiAutomation, toolsets ([\"auto\"] = tools for installed software; [\"all\"]; or a list: core, api, revit, scan, inspector, autocad, navisworks, inventor, recap, com, ui), inspectorName, requestTimeoutSeconds, captureMode (changes/off), captureMaxWidth, maxTools. Safety switches can only be made stricter by an AI, never relaxed.",
             InputSchema = Obj(O("key", Str("Setting name")), O("value", Any("New value"))),
             Handler = (a, ctx) =>
             {
@@ -121,6 +123,11 @@ public static class CoreTools
                 {
                     if (key == "readOnly" && Config.ReadOnly && !Json.Bool(a, "value"))
                         throw new ToolException("Read-only mode can only be switched off by editing " + Config.FilePath + " (an AI agent cannot unlock itself).");
+                    // 1.3: an AI agent may switch a safety layer OFF, but never back ON (only a person editing the file can)
+                    if (key is "allowScripts" or "allowComAutomation" or "allowUiAutomation" or "allowComputerControl" && Json.Bool(a, "value") && !Json.Bool(Config.Data, key, true))
+                        throw new ToolException($"'{key}' was disabled by an administrator. Only a person can enable it again by editing {Config.FilePath}.");
+                    if (key is "httpToken")
+                        throw new ToolException("httpToken can only be set by editing " + Config.FilePath + ".");
                     Config.Set(key, Json.Get(a, "value"));
                 }
                 return Json.O("file", Config.FilePath, "settings", Config.Data, "note", "toolsets changes apply after the AI client reconnects (restart the MCP server).");
@@ -157,8 +164,8 @@ public static class CoreTools
         r.Add(new Tool
         {
             Name = "burak_guide", Title = "How-to guide", Toolset = "core", ReadOnly = true,
-            Description = "Workflow guides: scan (scan-to-BIM), inspector, ribbon (every command/tab), api (full API access).",
-            InputSchema = Obj(O("topic", Enum("Topic", "overview", "scan", "inspector", "ribbon", "api"))),
+            Description = "Workflow guides: capture (see views/windows), computer (consented computer control), csi (ETABS/SAP2000/CSiBridge/SAFE), bluebeam / planswift (takeoff), clients (connect AI apps), scan (scan-to-BIM), inspector, ribbon (every command/tab), api (full API access).",
+            InputSchema = Obj(O("topic", Enum("Topic", "overview", "capture", "computer", "csi", "bluebeam", "planswift", "clients", "scan", "inspector", "ribbon", "api"))),
             Handler = (a, ctx) => Guide.Topic(Json.Str(a, "topic", "overview"))
         });
     }

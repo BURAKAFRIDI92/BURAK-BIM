@@ -1,10 +1,19 @@
 name: build
 
+# BURAK BIM release pipeline (1.3):
+#  1. self-contained MCP server + self tests (scan math, MCP protocol and schemas for every AI-client profile)
+#  2. PREBUILT bridges for every product year, compiled against each year's own API reference assemblies:
+#       Revit 2022-2027 (Nice3point.Revit.Api.*), AutoCAD family 2022-2027 (Autodesk AutoCAD.NET),
+#       Navisworks 2022-2027 (Chuongmep.Navis.Api.*). Autodesk DLLs are only referenced, never shipped.
+#  3. offline C# compiler for versions without a prebuilt bridge
+#  4. release ZIP + Setup.exe + Claude Desktop extension (.mcpb)
+
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'release/**' ]
     tags: [ 'v*' ]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,65 +21,208 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-dotnet@v4
         with:
-          # 8.0 builds the server and Revit/AutoCAD 2025-2026 bridges; 10.0 is needed for the Revit 2027 bridge (net10.0)
+          # 8.0: server + Revit/AutoCAD 2025-2026 bridges; 10.0: Revit 2027 / AutoCAD 2027 bridges (net10.0)
           dotnet-version: |
             8.0.x
             10.0.x
 
-      - name: Build server (single-file, self-contained)
-        run: dotnet publish src/BurakBim.Server/BurakBim.Server.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:DebugType=none -o out/server
+      # Self-contained FOLDER (not a self-extracting single file): nothing unpacks itself into %TEMP% at run time,
+      # which keeps antivirus heuristics quiet, and no .NET is needed on the user's PC.
+      - name: Build server (self-contained folder, no .NET needed on the user's PC)
+        run: dotnet publish src/BurakBim.Server/BurakBim.Server.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=false -p:DebugType=none -o out/server
 
       - name: Self-test (scan-to-BIM algorithms)
         run: out/server/BurakBim.Server.exe --selftest
 
-      - name: MCP smoke test
+      - name: Self-test (MCP protocol + schemas for every AI client profile)
+        run: out/server/BurakBim.Server.exe --mcp-selftest
+
+      - name: MCP stdio smoke test
         shell: pwsh
         run: |
           $req = @(
-            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","clientInfo":{"name":"ci","version":"1"}}}',
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","clientInfo":{"name":"claude-ai","version":"1"},"capabilities":{}}}',
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}',
             '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
           ) -join "`n"
           $out = $req | out/server/BurakBim.Server.exe
           if (-not ($out -match '"serverInfo"')) { throw "initialize failed" }
-          Write-Host $out.Substring(0, [Math]::Min(400, $out.Length))
+          if (-not ($out -match '"capture"')) { throw "tools/list missing capture" }
+          foreach ($line in ($out -split "`n")) { if ($line.Trim().Length -gt 0) { $null = $line | ConvertFrom-Json } }   # every stdout line must be pure JSON
+          Write-Host $out.Substring(0, [Math]::Min(600, $out.Length))
 
-      # Revit bridges compile against Nice3point reference packages (no Revit needed on the runner).
-      - name: Compile-check Revit bridges 2022-2027
+      - name: Prebuilt bridges (Revit, AutoCAD family, Navisworks - every year)
         shell: pwsh
         run: |
-          $versions = @{ 2022='2022.1.80'; 2023='2023.1.80'; 2024='2024.2.0'; 2025='2025.1.0'; 2026='2026.1.0'; 2027='2027.0.10' }
-          foreach ($y in $versions.Keys | Sort-Object) {
-            $ref = "refs/revit$y"
-            dotnet new classlib -o $ref --force | Out-Null
-            dotnet add $ref package Nice3point.Revit.Api.RevitAPI --version $versions[$y] | Out-Null
-            dotnet add $ref package Nice3point.Revit.Api.RevitAPIUI --version $versions[$y] | Out-Null
-            dotnet restore $ref | Out-Null
-            $dll = Get-ChildItem "$env:USERPROFILE/.nuget/packages/nice3point.revit.api.revitapi/$($versions[$y])" -Recurse -Filter RevitAPI.dll | Select-Object -First 1
-            $dir = Join-Path $PWD "refs/revit$y-dlls"; New-Item -ItemType Directory -Force $dir | Out-Null
-            Copy-Item $dll.FullName $dir
-            $ui = Get-ChildItem "$env:USERPROFILE/.nuget/packages/nice3point.revit.api.revitapiui/$($versions[$y])" -Recurse -Filter RevitAPIUI.dll | Select-Object -First 1
-            Copy-Item $ui.FullName $dir
-            dotnet build src/BurakBim.Bridge.Revit/BurakBim.Bridge.Revit.csproj -c Release -p:RevitYear=$y -p:RevitDir=$dir -o out/bridges/revit/$y
-            if ($LASTEXITCODE -ne 0) { throw "Revit $y bridge failed" }
+          $ErrorActionPreference = 'Continue'
+          $root = $PWD.Path
+          $summary = @()
+          # Reference assemblies straight from nuget.org (download + unzip): no project/TFM compatibility checks needed.
+          function Get-Package([string]$Package, [string]$Version) {
+            $id = $Package.ToLowerInvariant()
+            $dir = Join-Path $root "refs/pkg/$id.$Version"
+            if (Test-Path $dir) { return $dir }
+            $nupkg = Join-Path $root "refs/pkg/$id.$Version.zip"
+            New-Item -ItemType Directory -Force (Split-Path $nupkg) | Out-Null
+            try { Invoke-WebRequest -UseBasicParsing "https://api.nuget.org/v3-flatcontainer/$id/$Version/$id.$Version.nupkg" -OutFile $nupkg -ErrorAction Stop }
+            catch { Write-Host "  package $Package $Version not available: $($_.Exception.Message)"; return $null }
+            Expand-Archive $nupkg $dir -Force
+            return $dir
           }
+          function Get-Refs([string]$Name, [hashtable]$Wanted) {
+            # $Wanted: @{ 'Package.Id' = @('Some.dll', ...) } all at one version given in $Wanted['_version'] or per id 'Id|ver'
+            $dir = Join-Path $root "refs/$Name-dlls"; New-Item -ItemType Directory -Force $dir | Out-Null
+            foreach ($k in $Wanted.Keys) {
+              $id, $ver = $k -split '\|'
+              $pkg = Get-Package $id $ver
+              if (-not $pkg) { return $null }
+              foreach ($d in $Wanted[$k]) {
+                $f = Get-ChildItem $pkg -Recurse -Filter $d | Sort-Object { $_.FullName.Length } | Select-Object -First 1
+                if (-not $f) { Write-Host "  $d not found in $id $ver"; return $null }
+                Copy-Item $f.FullName $dir -Force
+              }
+            }
+            return $dir
+          }
+          function Build-Bridge([string]$HostName, [int]$Year, [string]$Proj, [string[]]$Props) {
+            $out = Join-Path $root "out/prebuilt/$HostName/$Year"
+            $log = Join-Path $root "out/logs/$HostName-$Year.log"
+            New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
+            dotnet build $Proj -c Release @($Props | ForEach-Object { "-p:$_" }) -o $out *> $log
+            if ($LASTEXITCODE -eq 0) { return "OK" }
+            Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
+            Get-Content $log -Tail 25 | Write-Host
+            return "FAILED"
+          }
+          # ---------------- Revit 2022-2027
+          $revit = [ordered]@{ 2022='2022.1.80'; 2023='2023.1.80'; 2024='2024.2.0'; 2025='2025.1.0'; 2026='2026.1.0'; 2027='2027.0.10' }
+          foreach ($y in $revit.Keys) {
+            $v = $revit[$y]
+            $a = Get-Refs "revit$y" @{ "Nice3point.Revit.Api.RevitAPI|$v" = @('RevitAPI.dll'); "Nice3point.Revit.Api.RevitAPIUI|$v" = @('RevitAPIUI.dll') }
+            if (-not $a) { $summary += "revit $y : reference packages not found"; continue }
+            $summary += "revit $y : " + (Build-Bridge 'revit' $y 'src/BurakBim.Bridge.Revit/BurakBim.Bridge.Revit.csproj' @("RevitYear=$y", "RevitDir=$a"))
+          }
+          # ---------------- AutoCAD family 2022-2027 (Autodesk's official reference packages)
+          # AutoCAD.NET (acmgd) / AutoCAD.NET.Core (accoremgd) / AutoCAD.NET.Model (acdbmgd); 2025: AutoCAD.NET 25.0.1 uses Core/Model 25.0.0
+          $acad = [ordered]@{ 2022=@('24.1.51000','24.1.51000'); 2023=@('24.2.0','24.2.0'); 2024=@('24.3.0','24.3.0'); 2025=@('25.0.1','25.0.0'); 2026=@('25.1.0','25.1.0'); 2027=@('26.0.0','26.0.0') }
+          foreach ($y in $acad.Keys) {
+            $va = $acad[$y][0]; $vc = $acad[$y][1]
+            $d = Get-Refs "acad$y" @{ "AutoCAD.NET|$va" = @('acmgd.dll'); "AutoCAD.NET.Core|$vc" = @('accoremgd.dll'); "AutoCAD.NET.Model|$vc" = @('acdbmgd.dll') }
+            if (-not $d) { $summary += "autocad $y : reference packages not found"; continue }
+            $summary += "autocad $y : " + (Build-Bridge 'autocad' $y 'src/BurakBim.Bridge.AutoCAD/BurakBim.Bridge.AutoCAD.csproj' @("AcadYear=$y", "AcadDir=$d"))
+          }
+          # ---------------- Navisworks 2022-2027
+          $navis = [ordered]@{ 2022='2022.0.6'; 2023='2023.0.7'; 2024='2024.0.0'; 2025='2025.0.0'; 2026='2026.0.0'; 2027='2027.0.0' }
+          foreach ($y in $navis.Keys) {
+            $d = Get-Refs "navis$y" @{ "Chuongmep.Navis.Api.Autodesk.Navisworks.Api|$($navis[$y])" = @('Autodesk.Navisworks.Api.dll') }
+            if (-not $d) { $summary += "navisworks $y : reference package not found (installer compiles it on the user's PC)"; continue }
+            $summary += "navisworks $y : " + (Build-Bridge 'navisworks' $y 'src/BurakBim.Bridge.Navisworks/BurakBim.Bridge.Navisworks.csproj' @("NavisYear=$y", "NavisDir=$d"))
+          }
+          # ---------------- share one copy of Roslyn & co. (net48 / netcore) instead of 18 copies
+          $sharedRoot = Join-Path $root 'out/prebuilt/_shared'
+          foreach ($bridgeDir in Get-ChildItem (Join-Path $root 'out/prebuilt') -Directory | Where-Object { $_.Name -ne '_shared' } | ForEach-Object { Get-ChildItem $_.FullName -Directory }) {
+            $main = Get-ChildItem $bridgeDir.FullName -Filter 'BurakBim.Bridge.*.dll' | Select-Object -First 1
+            if (-not $main) { continue }
+            $isNetFx = (Get-ChildItem $bridgeDir.FullName -Filter '*.deps.json').Count -eq 0
+            $kind = if ($isNetFx) { 'net48' } else { 'netcore' }
+            $dest = Join-Path $sharedRoot $kind; New-Item -ItemType Directory -Force $dest | Out-Null
+            Get-ChildItem $bridgeDir.FullName -File | Where-Object { $_.Name -notlike 'BurakBim.*' -and $_.Extension -eq '.dll' } | ForEach-Object {
+              $t = Join-Path $dest $_.Name
+              if (-not (Test-Path $t)) { Move-Item $_.FullName $t } else { Remove-Item $_.FullName -Force }
+            }
+            Get-ChildItem $bridgeDir.FullName -Directory | Remove-Item -Recurse -Force   # satellite / runtimes folders
+            Get-ChildItem $bridgeDir.FullName -Filter '*.pdb' | Remove-Item -Force
+            @{ host = $bridgeDir.Parent.Name; year = [int]$bridgeDir.Name; scripting = $true; built = (Get-Date).ToString('s') } | ConvertTo-Json | Set-Content (Join-Path $bridgeDir.FullName 'bridge.json')
+          }
+          Write-Host ""; Write-Host "=========== PREBUILT BRIDGES ==========="; $summary | ForEach-Object { Write-Host $_ }
+          $summary | Set-Content (Join-Path $root 'out/prebuilt-summary.txt')
+          "## Prebuilt bridges`n" + (($summary | ForEach-Object { "- $_" }) -join "`n") | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          if (($summary | Where-Object { $_ -like 'revit*FAILED*' }).Count -gt 0) { throw "A Revit bridge failed to compile - see the log above." }
 
-      - name: Package ZIP + Setup.exe
+      - name: Offline C# compiler for the installer (Microsoft.Net.Compilers.Toolset, runs on .NET Framework 4.8)
         shell: pwsh
         run: |
+          $zip = 'refs/roslyn.zip'; New-Item -ItemType Directory -Force refs | Out-Null
+          Invoke-WebRequest -UseBasicParsing 'https://api.nuget.org/v3-flatcontainer/microsoft.net.compilers.toolset/4.8.0/microsoft.net.compilers.toolset.4.8.0.nupkg' -OutFile $zip
+          Expand-Archive $zip refs/roslyn -Force
+          $pkg = 'refs/roslyn/tasks/net472'
+          if (-not (Test-Path "$pkg/csc.exe")) { throw "csc.exe not found in $pkg" }
+          New-Item -ItemType Directory -Force out/tools/roslyn | Out-Null
+          Copy-Item "$pkg/*" out/tools/roslyn -Recurse -Force
+          Get-ChildItem out/tools/roslyn -Recurse -Include *.pdb,*.xml | Remove-Item -Force
+
+      # Optional code signing: add repository secrets SIGN_PFX_BASE64 (base64 of a .pfx code-signing certificate)
+      # and SIGN_PFX_PASSWORD. Without them the build is unsigned (Windows SmartScreen shows "unknown publisher").
+      - name: Package ZIP + Setup.exe + Claude Desktop extension
+        shell: pwsh
+        env:
+          SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
+          SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
+        run: |
+          if ($env:SIGN_PFX_BASE64) {
+            $pfx = Join-Path $env:RUNNER_TEMP 'sign.pfx'
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX_BASE64))
+            $env:SIGN_PFX = $pfx
+          }
           choco install nsis -y --no-progress
           ./build/build-release.ps1 -NoBuild -Makensis "C:\Program Files (x86)\NSIS\makensis.exe"
+
+      - name: Install and uninstall test (the ZIP users download, silent, clean Windows)
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem dist -Filter 'BURAK-BIM-Installer-*-win-x64.zip' | Select-Object -First 1
+          if (-not $zip) { throw "installer ZIP was not produced" }
+          $kit = Join-Path $env:RUNNER_TEMP 'kit'
+          Expand-Archive $zip.FullName $kit -Force
+          foreach ($f in 'BURAK-BIM-Installer.exe', 'BURAK-BIM-Uninstaller.exe', 'README-INSTALL.txt', 'SHA256SUMS.txt') { if (-not (Test-Path (Join-Path $kit $f))) { throw "$f missing from the ZIP" } }
+          foreach ($line in Get-Content (Join-Path $kit 'SHA256SUMS.txt')) {
+            $hash, $name = $line -split '\s+', 2
+            if ((Get-FileHash (Join-Path $kit $name) -Algorithm SHA256).Hash -ne $hash) { throw "checksum mismatch: $name" }
+          }
+          # a leftover logon task from an older version must be removed by the upgrade
+          schtasks /Create /TN "BURAK BIM Sentinel" /TR "cmd.exe /c exit" /SC ONLOGON /F | Out-Null
+          $dir = Join-Path $env:RUNNER_TEMP 'BURAK BIM'
+          $p = Start-Process (Join-Path $kit 'BURAK-BIM-Installer.exe') -ArgumentList '/S', "/D=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "installer exit $($p.ExitCode)" }
+          $exe = Join-Path $dir 'server\BurakBim.Server.exe'
+          if (-not (Test-Path $exe)) { throw "server was not installed at $exe" }
+          Get-ChildItem (Join-Path $dir 'logs') -Filter 'install-*.log' | Get-Content | Write-Host
+          & $exe --home $dir --doctor | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "--doctor exit $LASTEXITCODE" }
+          schtasks /Query /TN "BURAK BIM Sentinel" 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "old sentinel task was not removed" }
+          $global:LASTEXITCODE = 0
+          $p = Start-Process (Join-Path $kit 'BURAK-BIM-Uninstaller.exe') -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "uninstaller exit $($p.ExitCode)" }
+          if (Test-Path (Join-Path $dir 'server')) { throw "server folder still present after uninstall" }
+          if (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BURAK BIM') { throw "Apps and Features entry still present" }
+          if (-not (Test-Path (Join-Path $dir 'logs'))) { throw "logs should be kept after uninstall" }
+          Write-Host "Install and uninstall test passed"
 
       - uses: actions/upload-artifact@v4
         with:
           name: BURAK-BIM
           path: dist/*
 
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-logs
+          path: |
+            out/logs/*
+            out/prebuilt-summary.txt
+
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          body_path: docs/RELEASE_NOTES.md

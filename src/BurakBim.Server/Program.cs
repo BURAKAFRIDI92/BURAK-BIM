@@ -24,6 +24,14 @@ public static class Program
         AcadComTools.Register(r);
         ComMoreTools.Register(r);
         ArchicadCatalog.Register(r);
+        // 1.3
+        CaptureTools.Register(r);
+        ComputerTools.Register(r);
+        CsiTools.Register(r);
+        BluebeamTools.Register(r);
+        PlanSwiftTools.Register(r);
+        SetupTools.Register(r);
+        Skills.SkillLibrary.Register(r);
         PackErrors = new List<string>();
         Packs.PackLoader.Register(r, out var errs);
         PackErrors = errs;
@@ -32,7 +40,9 @@ public static class Program
 
     public static int Main(string[] args)
     {
-        Console.InputEncoding = System.Text.Encoding.UTF8;
+        try { Console.InputEncoding = System.Text.Encoding.UTF8; } catch { }
+        // 1.3: physical-pixel coordinates for screenshots and clicks on scaled (125 % / 150 %) and multi-monitor displays
+        Core.NativeDpi.MakeProcessDpiAware();
         var home = args.SkipWhile(a => a != "--home").Skip(1).FirstOrDefault();
         if (!string.IsNullOrEmpty(home)) BurakPaths.Root = home;
 
@@ -60,8 +70,49 @@ public static class Program
                 return Doctor();
             case "--selftest":
                 return SelfTest.Run();
+            case "--install":
+                return Setup.Installer.Install(args);
+            case "--rescan":
+                return Setup.Installer.Install(args, rescan: true);
+            case "--uninstall":
+                return Setup.Installer.Uninstall(args);
+            case "--mcp-selftest":
+                return McpSelfTest.Run();
+            case "--connect-clients":
+            {
+                var which = args.SkipWhile(a => a != "--connect-clients").Skip(1).FirstOrDefault(a => !a.StartsWith("--")) ?? "auto";
+                var rep = Setup.ClientConnector.Connect(which);
+                foreach (var r in rep)
+                    Console.WriteLine((Json.Bool(r, "ok") ? "  [OK] " : "  [!]  ") + Json.Str(r, "client") + " -> " + Json.Str(r, "file") + (Json.Str(r, "error") is { } e ? "  (" + e + ")" : ""));
+                if (rep.Count == 0) Console.WriteLine("  No AI clients detected. Add BURAK-BIM by hand using config\\mcp-client-snippet.json.");
+                return rep.Any(r => !Json.Bool(r, "ok")) ? 2 : 0;
+            }
+            case "--disconnect-clients":
+                foreach (var r in Setup.ClientConnector.Disconnect()) Console.WriteLine("  removed BURAK-BIM from " + Json.Str(r, "client") + " (" + Json.Str(r, "file") + ")" + (Json.Str(r, "error") is { } de ? " ERROR " + de : ""));
+                return 0;
+            case "--list-clients":
+                Console.WriteLine(Json.Serialize(Setup.ClientConnector.List().Cast<object>().ToList(), true));
+                return 0;
+            case "--http":
+            {
+                var portText = args.SkipWhile(a => a != "--http").Skip(1).FirstOrDefault(a => !a.StartsWith("--"));
+                int port = int.TryParse(portText, out var pp) ? pp : (int)Json.Int(Core.Config.Data, "httpPort", 8765);
+                return HttpTransport.Run(new McpServer(BuildRegistry()), port);
+            }
             case "--help":
-                Console.WriteLine("BURAK BIM MCP server\n  (no args)    run MCP over stdio (used by AI clients)\n  --doctor     check installation, detected software, live bridges\n  --detect     JSON list of installed Autodesk software\n  --tools      JSON list of all tools\n  --selftest   run scan-to-BIM math self tests\n  --home DIR   override install folder");
+                Console.WriteLine("BURAK BIM MCP server " + BurakInfo.Version +
+                    "\n  (no args)               run MCP over stdio (used by AI clients)" +
+                    "\n  --http [port]           run MCP over local Streamable HTTP (http://127.0.0.1:8765/mcp)" +
+                    "\n  --connect-clients [ids] connect AI clients (auto | all | claude-desktop,claude-code,codex,cursor,windsurf,antigravity,gemini,vscode,visualstudio,cline,roo,kilo,lmstudio,kiro,amazonq,trae,continue,opencode,zed)" +
+                    "\n  --disconnect-clients    remove BURAK-BIM from every AI client config" +
+                    "\n  --list-clients          AI clients found on this PC and whether they are connected" +
+                    "\n  --install / --rescan / --uninstall   set up bridges, AI apps and skills (used by Setup.exe; no PowerShell)" +
+                    "\n  --doctor                check installation, detected software, live bridges" +
+                    "\n  --detect                JSON list of installed software" +
+                    "\n  --tools                 JSON list of all tools" +
+                    "\n  --selftest              scan-to-BIM math self tests" +
+                    "\n  --mcp-selftest          protocol + schema checks for every AI-client profile" +
+                    "\n  --home DIR              override install folder");
                 return 0;
         }
         return new McpServer(BuildRegistry()).Run();
@@ -85,6 +136,10 @@ public static class Program
             try { BridgeClient.Call(d, "bridge.ping", null, null, 5000); state = "OK"; } catch (Exception ex) { state = "ERROR " + ex.Message; }
             Console.WriteLine($"  {d.Id,-28} {d.Product,-35} port {d.Port}  {state}");
         }
+        Console.WriteLine("\nAI clients:");
+        foreach (var c in Setup.ClientConnector.List())
+            if (Json.Bool(c, "installed") || Json.Bool(c, "connected"))
+                Console.WriteLine($"  {Json.Str(c, "client"),-50} {(Json.Bool(c, "connected") ? "connected" : "NOT connected (run --connect-clients)")}");
         var reg = BuildRegistry();
         Console.WriteLine($"\nTools available: {reg.All.Count()}  (" + string.Join(", ", reg.All.GroupBy(t => t.Toolset).OrderBy(g => g.Key).Select(g => g.Key + " " + g.Count())) + ")");
         foreach (var e in PackErrors) Console.WriteLine("  pack warning: " + e);

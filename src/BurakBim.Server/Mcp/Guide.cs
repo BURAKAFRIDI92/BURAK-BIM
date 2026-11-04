@@ -4,22 +4,26 @@ namespace BurakBim.Server.Mcp;
 
 public static class Guide
 {
-    public static string ServerInstructions() => $@"BURAK BIM {BurakInfo.Version} connects you to Autodesk software on this PC: Revit, AutoCAD and every AutoCAD-based product (Civil 3D, Plant 3D, Map 3D, MEP, Architecture, Electrical, Advance Steel), Navisworks Manage/Simulate, Inventor, ReCap Pro, Robot Structural Analysis (2022-2027), plus Graphisoft Archicad, Rhino + Grasshopper and Dynamo. BURAK-BIM - Building a Smarter Tomorrow.
+    public static string ServerInstructions() => $@"BURAK BIM {BurakInfo.Version} connects you to the BIM, CAD, structural and takeoff software on this PC:
+Autodesk Revit, AutoCAD and every AutoCAD-based product (Civil 3D, Plant 3D, Map 3D, MEP, Architecture, Electrical, Advance Steel), Navisworks Manage/Simulate (2022-2027), Inventor, ReCap Pro, Robot;
+CSI SAP2000, ETABS, CSiBridge, SAFE; Graphisoft Archicad; Bluebeam Revu; PlanSwift; Rhino + Grasshopper; Dynamo. BURAK-BIM - Building a Smarter Tomorrow.
 
-How to work:
-1. Start with burak_status: what is installed, what is running, which bridges are live.
-2. Prefer the specific tools (revit_*, navis_*/navisworks_*, autocad_*, archicad_*, robot_*, rhino_*, inventor_*, scan_*, inspector_*). There are about 1000; if the one you need is not in your tool list, search with burak_tools (keywords, e.g. 'room finishes' or 'clash report') and run it with burak_run.
-3. Anything without a specific tool is still reachable, in this order:
-   a. ribbon_list + ribbon_invoke - press ANY ribbon button on ANY tab (Architecture, Structure, Steel, Systems, Insert, Annotate, Analyze, Massing & Site, Collaborate, View, Manage, Add-Ins, Modify, contextual and third-party tabs).
-   b. revit_command / autocad_command / inventor_command - run any native command by name.
-   c. api_inspect / api_get / api_call / api_set - the full .NET API of Revit, AutoCAD, Civil 3D and Navisworks by reflection.
-   d. script_run - C# against the live API (one undo step).
-   e. com_* - full COM API (Inventor, AutoCAD, Robot ...).
-   f. ui_* + screenshot - drive any dialog/window (also ReCap) and look at the result.
-4. Revit units on the wire are millimetres. AutoCAD uses drawing units. Navisworks uses model units.
-5. Every change made through BURAK BIM is one undo step, stamped as AI-created (who/when/tool) and logged in the audit trail. BIM inspectors review with inspector_review_view, inspector_mark and burak_inspection_report. Never claim LOD 500 without an inspector's verified sign-off.
-6. Interactive commands (picks, dialogs) start when the call returns: finish them with ui_* tools or ask the user.
-7. Scan-to-BIM: scan_link_pointcloud -> scan_to_bim (dryRun first, then create) -> scan_deviation -> inspector review.";
+How to work (like a careful BIM engineer):
+1. Start with burak_status: what is installed, what is running, which bridges are live. Then, for any multi-step task, read the matching
+   professional method with burak_skills (task: what you are about to do) - e.g. revit-model-health, revit-documentation, revit-mep-modeling, bim-coordination,
+   csi-structural-analysis, bluebeam-takeoff - and follow it: counts before detail, focused queries, bulk changes, preview + user approval, verify.
+2. LOOK before and after you change things: revit_capture renders any Revit view (plans, sections, elevations, 3D, sheets); capture shows any application window or dialog. Capture mode adds a picture to every change automatically (capture_mode to switch off).
+3. Prefer the specific tools (revit_*, autocad_*, navisworks_*, csi_*, archicad_*, bluebeam_*, planswift_*, robot_*, rhino_*, inventor_*, scan_*, inspector_*). If a tool you need is not in your list, find it with burak_tools and run it with burak_run (about 1100 tools exist).
+4. Anything without a specific tool is still reachable, in this order:
+   a. ribbon_list + ribbon_invoke - any ribbon button of Revit, AutoCAD/Civil 3D, Navisworks (built-in, contextual and add-in tabs).
+   b. revit_command / autocad_command / inventor_command - any native command.
+   c. api_inspect / api_get / api_call / api_set / script_run - the full .NET API (Revit, AutoCAD, Civil 3D, Navisworks); csi_call - every SAP2000/ETABS/CSiBridge/SAFE API function; com_* - any COM API; planswift_call.
+   d. ui_* - drive dialogs through Windows UI Automation.
+   e. LAST RESORT computer control: computer_request_control (the user approves on screen) -> computer_screenshot / computer_click / computer_type / computer_key / computer_drag -> computer_release_control. Tell the user what you will do first, check every step with the returned screenshot, and stop if something unexpected appears.
+5. Units: Revit tools use millimetres. AutoCAD uses drawing units. CSI tools use the model's present units (csi_units). Navisworks uses model units.
+6. Accuracy: read back what you created (ids, parameters, results) and confirm it visually. Never guess element ids, section names or load case names - list them first.
+7. Every change through BURAK BIM is one undo step, stamped as AI-created and logged in the audit trail. Never claim LOD 500 without an inspector's verified sign-off.
+8. Read-only mode (config) blocks all changes - do not try to work around it.";
 
     public static string Topic(string topic) => topic.ToLowerInvariant() switch
     {
@@ -54,7 +58,36 @@ Commands that need picks/dialogs: continue with ui_tree / ui_click / ui_type, ch
 - api_call app=revit target=""$h12"" method=""LookupParameter"" args=[""Comments""]
 - script_run app=revit code=""return doc.ActiveView.Name;"" (C#, globals doc/uidoc/uiapp/app; Print(x) for output).
 - AutoCAD roots: doc, db, ed, docs, civil. Navisworks roots: doc, clash, timeliner, selection.",
-        _ => ServerInstructions() + "\n\nTopics: scan, inspector, ribbon, api."
+        "capture" => @"CAPTURE MODE - SEE THE MODEL
+- revit_capture: active view, or view=<id|name>, views=[...] (max 8), allOpenViews=true; pixelSize up to 6000. Sheets by number. Returns images + facts (scale, level, element counts).
+- revit_capture_views: list views that can be captured.
+- capture app=<revit|autocad|navisworks|etabs|sap2000|csibridge|safe|archicad|bluebeam|planswift|...> (window=dialog title, grid=true for click coordinates), fullScreen=true, monitor=2, region=[x,y,w,h].
+- capture_mode mode=changes|off: automatic picture after every change (default changes, 1024 px).",
+        "computer" => @"COMPUTER CONTROL (last resort, needs the user's approval)
+1. Explain in the chat what you will do and why no API can.
+2. computer_request_control reason=""..."" minutes=15 -> the user clicks Yes on their screen.
+3. computer_screenshot (grid=true) -> read SCREEN coordinates from the grid labels / caption mapping.
+4. computer_click x y | computer_type text | computer_key keys=""ctrl+s"" | computer_drag from to | computer_scroll. Each returns a new screenshot: verify before the next step.
+5. computer_release_control when done. The user can stop anytime with Ctrl+Alt+Q.
+Never type passwords, never confirm purchases or licence agreements, never delete files without the user's explicit OK.",
+        "csi" or "etabs" or "sap2000" => @"CSI (ETABS / SAP2000 / CSiBridge / SAFE)
+- csi_status -> attach, file, units, counts. csi_register_api once if the API is not registered.
+- csi_units set=kN_m_C. csi_file new|open|save|saveas. csi_unlock before editing an analysed model.
+- csi_points / csi_frames / csi_areas / csi_sections / csi_loads (patterns, combos, point/frame/area loads).
+- csi_analyze -> csi_results kind=base_reactions|joint_reactions|joint_displacements|frame_forces|modal_periods|story_drifts -> csi_design type=steel|concrete action=start|summary.
+- csi_members path=FrameObj (signatures) and csi_call path=FrameObj.GetLocalAxes args=[""B1""] reach EVERY OAPI function; by-ref outputs come back by name, result tables as rows.",
+        "bluebeam" or "planswift" or "takeoff" => @"TAKEOFF (Bluebeam Revu / PlanSwift)
+- bluebeam_markups path=...pdf -> every markup with subject, author, page, measurement value/unit, layer, custom columns.
+- bluebeam_takeoff_summary -> totals by subject (and page/layer/author). pdf_info / pdf_text read sheets and specs.
+- bluebeam_script (Revu eXtreme/Complete): Flatten, Stamp, HeaderAndFooter, PageRotate, Import/Export markups...
+- planswift_status / planswift_tree / planswift_quantities / planswift_item / planswift_set / planswift_new_item / planswift_call.
+- Drawing takeoffs on the canvas: capture app=bluebeam|planswift grid=true + computer_* (with permission).",
+        "clients" => @"CONNECTING AI APPS
+- burak_connect_clients action=list|connect|disconnect clients=auto|all|cursor,vscode,...
+- Claude Desktop: install BURAK-BIM.mcpb (double-click) or let the installer write claude_desktop_config.json, then fully quit Claude from the tray and restart.
+- Apps with tool limits (VS Code/Copilot, Codex/ChatGPT, Cursor, Antigravity, Gemini) get the most useful tools first; all others via burak_tools + burak_run.
+- HTTP clients: BurakBim.Server.exe --http 8765 -> http://127.0.0.1:8765/mcp",
+        _ => ServerInstructions() + "\n\nTopics: capture, computer, csi, bluebeam, planswift, clients, scan, inspector, ribbon, api."
     };
 }
 

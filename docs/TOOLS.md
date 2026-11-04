@@ -1062,3 +1062,87 @@
 |---|---|---|
 | `screenshot` | Capture the main window of an application (or the whole screen) as an image so you can SEE the current state: model view, dialogs, results. | no |
 
+
+---
+
+## New in 1.3
+
+### capture
+
+| Tool | What it does | Changes model |
+|---|---|---|
+| `capture` | Picture of any application window or dialog, a monitor, the desktop or a region. Optional screen-coordinate grid. | no |
+| `capture_mode` | Turns the automatic picture after every change on (`changes`) or `off`. | no |
+| `revit_capture` | Renders Revit views (active view, by id or name, several views, all open views, sheets) through the API, with view facts. | no |
+| `revit_capture_views` | Lists the Revit views and sheets that can be captured. | no |
+
+### computer (works only after the user approves on screen)
+
+| Tool | What it does | Changes model |
+|---|---|---|
+| `computer_request_control` | Asks the user, with a reason, for time-limited control of the mouse and keyboard. | no |
+| `computer_release_control` | Gives control back to the user. | no |
+| `computer_status` | Shows the permission state. | no |
+| `computer_screenshot` | Screen, monitor or app picture with a coordinate grid. | no |
+| `computer_windows` | Lists open windows with their screen rectangles. | no |
+| `computer_focus` | Brings an app or dialog to the front. | yes |
+| `computer_click` | Left, right, middle or double click at screen coordinates, optionally with a modifier key held. | yes |
+| `computer_move` | Moves the mouse (hover). | yes |
+| `computer_drag` | Drags from one point to another. | yes |
+| `computer_scroll` | Turns the mouse wheel. | yes |
+| `computer_type` | Types exact Unicode text, optionally after clicking a field or replacing its text. | yes |
+| `computer_key` | Presses keys and shortcuts, including sequences. | yes |
+| `computer_open` | Opens a file, folder, app or URL. | yes |
+| `computer_wait` | Waits, then returns a fresh screenshot. | no |
+
+### csi: SAP2000, ETABS, CSiBridge, SAFE
+
+| Tool | What it does | Changes model |
+|---|---|---|
+| `csi_status` | Installed and running programs, attach state, file, version, units, counts, patterns, cases and combos. | no |
+| `csi_call` | Calls any OAPI function by path, with by-ref outputs and result rows. | yes |
+| `csi_members` | Lists the functions of an API object with their signatures. | no |
+| `csi_register_api` | Registers the CSI API once (asks for administrator approval). | yes |
+| `csi_units` | Shows or sets the present units. | yes |
+| `csi_file` | Creates, opens, saves or saves the model under a new name. | yes |
+| `csi_unlock` | Unlocks the model for editing. | yes |
+| `csi_points` | Lists or adds joints, and sets restraints. | yes |
+| `csi_frames` | Lists, adds, re-sections or deletes frames. | yes |
+| `csi_areas` | Lists or adds area objects. | yes |
+| `csi_sections` | Lists materials and sections, and adds materials and rectangle or circle sections. | yes |
+| `csi_loads` | Load patterns, combinations, and point, frame and area loads. | yes |
+| `csi_analyze` | Runs the analysis (all cases or selected cases). | yes |
+| `csi_results` | Base and joint reactions, displacements, frame and area forces, modal results, story drifts and forces. | no |
+| `csi_design` | Steel, concrete and composite design: start and summary. | yes |
+| `csi_select` | Selects objects or groups, clears the selection, lists groups. | no |
+
+### bluebeam / pdf
+
+| Tool | What it does | Changes model |
+|---|---|---|
+| `bluebeam_status` | Installed and running Revu, open PDFs, scripting support. | no |
+| `bluebeam_open` | Opens a PDF in Revu. | no |
+| `bluebeam_markups` | Every markup in the PDF: subject, author, page, measurement, layer, status and columns. | no |
+| `bluebeam_takeoff_summary` | Quantity totals by subject, optionally also by page, layer or author. | no |
+| `bluebeam_script` | Runs Bluebeam Script commands through ScriptEngine (eXtreme/Complete). | yes |
+| `pdf_info` | Pages, sheet sizes, metadata and markup counts. | no |
+| `pdf_text` | Text of PDF pages, optionally only pages that contain a search term. | no |
+
+### planswift
+
+| Tool | What it does | Changes model |
+|---|---|---|
+| `planswift_status` | Connection, version and the open job. | no |
+| `planswift_tree` | The item tree with quantities. | no |
+| `planswift_quantities` | A flat takeoff report. | no |
+| `planswift_item` | All properties of one item. | no |
+| `planswift_set` | Sets a property's value or formula. | yes |
+| `planswift_new_item` | Creates an item or folder. | yes |
+| `planswift_call` | Calls any PlanSwift API method. | yes |
+
+### core
+
+| Tool | What it does | Changes model |
+|---|---|---|
+| `burak_connect_clients` | Lists, connects or disconnects AI apps on this PC. | no |
+| `burak_skills` | BIM workflow skills: list them, get one, or suggest the right one for a task. | no |
