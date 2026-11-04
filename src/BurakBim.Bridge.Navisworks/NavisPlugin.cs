@@ -33,6 +33,7 @@ namespace BurakBim.Bridge.Navisworks
                 Server = new BridgeServer(Host);
                 NavisCommands.Register(Server, Host);
                 Server.Start();
+                BurakRibbon.Keep(Host, BurakRibbon.CommonActions(Host, Server).Concat(RibbonActions()), Assembly.GetExecutingAssembly());
             }
             catch (Exception ex)
             {
@@ -42,7 +43,48 @@ namespace BurakBim.Bridge.Navisworks
 
         public override void OnUnloading()
         {
+            BurakRibbon.Stop();
             try { if (Server != null) Server.Stop(); } catch { }
+        }
+
+        static IEnumerable<RibbonAction> RibbonActions()
+        {
+            yield return new RibbonAction { Panel = "Coordination", Text = "Model Summary", ToolTip = "Appended models, units and item counts.", Run = ModelSummary };
+            yield return new RibbonAction { Panel = "Coordination", Text = "Clash Summary", ToolTip = "Every clash test with its results by status.", Run = ClashSummary };
+            yield return new RibbonAction { Panel = "Coordination", Text = "TimeLiner Summary", ToolTip = "Number of 4D TimeLiner tasks.", Run = TimelinerSummary };
+        }
+
+        static string ModelSummary()
+        {
+            dynamic doc = NavisCommands.Doc();
+            var lines = new List<string> { "File: " + (string)doc.FileName, "Units: " + doc.Units, "Appended models: " + (int)doc.Models.Count, "" };
+            foreach (dynamic m in doc.Models) lines.Add(Path.GetFileName((string)m.FileName) + "  (" + m.Units + ")");
+            return string.Join("\n", lines);
+        }
+
+        static string ClashSummary()
+        {
+            var tests = NavisCompat.Tests();
+            if (tests.Count == 0) return "This file has no clash tests yet.";
+            var lines = new List<string>();
+            foreach (dynamic t in tests)
+            {
+                int results = 0;
+                foreach (dynamic c in t.Children) results += (bool)c.IsGroup ? (int)c.Children.Count : 1;
+                lines.Add((string)t.DisplayName + ": " + results + " results (" + t.Status + ")");
+            }
+            return string.Join("\n", lines);
+        }
+
+        static string TimelinerSummary()
+        {
+            int Count(dynamic parent)
+            {
+                int n = 0;
+                foreach (dynamic t in parent.Children) n += 1 + Count(t);
+                return n;
+            }
+            return "TimeLiner tasks: " + Count(NavisCommands.Timeliner().TasksRoot);
         }
 
         static string ReadProbeDir(string here)
@@ -189,10 +231,18 @@ namespace BurakBim.Bridge.Navisworks
         public dynamic ClashDoc() { return NavisCommands.ClashData(); }
         /// <summary>TimeLiner document part (DocumentTimeliner).</summary>
         public dynamic TimelinerDoc() { return NavisCommands.Timeliner(); }
+        /// <summary>Every clash test, on every Navisworks year.</summary>
+        public List<dynamic> ClashTests() { return NavisCompat.Tests(); }
+        public void AddClashTest(object test) { NavisCompat.AddTest(test); }
+        public void RemoveClashTest(object test) { NavisCompat.RemoveTest(test); }
+        public void SetClashStatus(object result, object status) { NavisCompat.SetStatus(result, status); }
+        public void SetClashAssignee(object result, string name) { NavisCompat.SetAssignee(result, name); }
+        public string AssigneeOf(object result) { return NavisCompat.AssigneeOf(result); }
+        public void PublishNwd(string path, object properties) { NavisCompat.Publish(doc, path, properties); }
         /// <summary>Clash test by name.</summary>
         public dynamic Test(string name)
         {
-            foreach (dynamic t in ClashDoc().TestsData.Tests)
+            foreach (dynamic t in NavisCompat.Tests())
                 if (string.Equals((string)t.DisplayName, name, StringComparison.OrdinalIgnoreCase)) return t;
             throw new BridgeException("Clash test '" + name + "' not found.");
         }

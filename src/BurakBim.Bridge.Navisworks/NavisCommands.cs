@@ -338,8 +338,7 @@ namespace BurakBim.Bridge.Navisworks
         // ------------------------------------------------------------ clash detective
         static dynamic FindTest(string name)
         {
-            dynamic data = ClashData().TestsData;
-            foreach (dynamic t in data.Tests)
+            foreach (dynamic t in NavisCompat.Tests())
                 if (string.Equals((string)t.DisplayName, name, StringComparison.OrdinalIgnoreCase)) return t;
             throw new BridgeException("Clash test '" + name + "' not found. Use navisworks_clash_tests.");
         }
@@ -357,7 +356,7 @@ namespace BurakBim.Bridge.Navisworks
         static object ClashTests(Dictionary<string, object> p)
         {
             var list = new List<object>();
-            foreach (dynamic t in ClashData().TestsData.Tests)
+            foreach (dynamic t in NavisCompat.Tests())
             {
                 var counts = new Dictionary<string, object>();
                 int total = 0;
@@ -400,7 +399,7 @@ namespace BurakBim.Bridge.Navisworks
                 var d = Json.O("$h", Reflector.Keep(r), "name", (string)r.DisplayName, "status", st, "distance", (double)r.Distance, "center", Pt(r.Center));
                 try { d["item1"] = r.Item1 == null ? null : PathOf(r.Item1); } catch { }
                 try { d["item2"] = r.Item2 == null ? null : PathOf(r.Item2); } catch { }
-                try { d["assignedTo"] = (string)r.AssignedTo; } catch { }
+                try { d["assignedTo"] = NavisCompat.AssigneeOf((object)r); } catch { }
                 try { d["description"] = (string)r.Description; } catch { }
                 try { d["created"] = r.CreatedTime == null ? null : r.CreatedTime.ToString(); } catch { }
                 list.Add(d);
@@ -410,7 +409,6 @@ namespace BurakBim.Bridge.Navisworks
 
         static object ClashCreate(Dictionary<string, object> p)
         {
-            dynamic data = ClashData().TestsData;
             var a = Json.Obj(p, "selectionA"); var b = Json.Obj(p, "selectionB");
             if (a == null || b == null) throw new BridgeException("selectionA and selectionB are searches: {category, property, value, op}.");
             dynamic itemsA = Find(a); dynamic itemsB = Find(b);
@@ -420,14 +418,13 @@ namespace BurakBim.Bridge.Navisworks
             test.Tolerance = Json.Num(p, "tolerance", 0);
             test.SelectionA.Selection.CopyFrom(itemsA);
             test.SelectionB.Selection.CopyFrom(itemsB);
-            data.TestsAddCopy(test);
-            if (Json.Bool(p, "run", true)) data.TestsRunTest(FindTest((string)test.DisplayName));
+            NavisCompat.AddTest((object)test);
+            if (Json.Bool(p, "run", true)) ClashData().TestsData.TestsRunTest(FindTest((string)test.DisplayName));
             return Json.O("created", (string)test.DisplayName, "itemsA", (int)itemsA.Count, "itemsB", (int)itemsB.Count, "tests", ClashTests(p));
         }
 
         static object ClashUpdate(Dictionary<string, object> p)
         {
-            dynamic data = ClashData().TestsData;
             var handles = Json.StrList(p, "handles");
             if (handles.Count == 0) throw new BridgeException("Pass handles of clash results (from navisworks_clash_results).");
             var status = Json.Str(p, "status");
@@ -435,10 +432,10 @@ namespace BurakBim.Bridge.Navisworks
             int n = 0;
             foreach (var h in handles)
             {
-                dynamic r = Reflector.FromHandle(h);
+                var r = Reflector.FromHandle(h);
                 if (!string.IsNullOrEmpty(status))
-                    data.TestsEditResultStatus(r, (dynamic)Enum.Parse(T("Autodesk.Navisworks.Api.Clash.ClashResultStatus"), status, true));
-                if (assigned != null) data.TestsEditResultAssignedTo(r, assigned);
+                    NavisCompat.SetStatus(r, Enum.Parse(T("Autodesk.Navisworks.Api.Clash.ClashResultStatus"), status, true));
+                if (assigned != null) NavisCompat.SetAssignee(r, assigned);
                 n++;
             }
             return Json.O("updated", n);

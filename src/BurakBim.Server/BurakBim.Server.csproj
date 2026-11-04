@@ -9,13 +9,13 @@
     <AssemblyName>BurakBim.Server</AssemblyName>
     <RootNamespace>BurakBim.Server</RootNamespace>
     <ApplicationIcon>..\..\assets\burakbim.ico</ApplicationIcon>
-    <Version>1.3.0</Version>
+    <Version>1.3.1</Version>
     <Company>BURAK BIM</Company>
     <Product>BURAK BIM</Product>
     <Description>BURAK BIM - one MCP connector for Revit, AutoCAD, Civil 3D, Navisworks, SAP2000, ETABS, CSiBridge, SAFE, Archicad, Bluebeam, PlanSwift and more.</Description>
     <Copyright>Copyright (c) BURAK BIM</Copyright>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <FileVersion>1.3.0.0</FileVersion>
+    <FileVersion>1.3.1.0</FileVersion>
     <AssemblyTitle>BURAK BIM MCP server</AssemblyTitle>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

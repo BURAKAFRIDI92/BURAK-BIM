@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.1 (2026-11-04) - Navisworks across every version, BURAK BIM tab
+
+Found in a live test on Navisworks Manage 2027, then checked by comparing the public API of Navisworks 2022-2027.
+
+- **BURAK BIM ribbon tab in Navisworks and in AutoCAD and every AutoCAD-based product.** Connection: Status, Reports, Logs. Navisworks also gets Coordination: Model Summary, Clash Summary, TimeLiner Summary.
+- **Clash tools work on Navisworks 2027.** Autodesk removed `DocumentClashTests.Tests`, `TestsAddCopy(ClashTest)` and `TestsRemove(ClashTest)`. All clash tools now use `TestsRoot` and include tests inside folders. These members exist in 2022-2027.
+- **Setting clash status or assignee works on 2026 and 2027**, where Autodesk replaced the string with an `Assignee`.
+- **`navis_publish_nwd` works on 2026 and 2027**, where `PublishFile` needs `NwdExportOptions`.
+- **Read-only mode.** 30 Navisworks tools that change the model, view or files were marked read-only, so read-only mode did not block them.
+- **CI compiles every Navisworks tool** against the API of each year that has a public reference package.
+
 ## 1.3.0 (2026-11-04) - works everywhere, sees the model, reaches every command
 
 ### Installer ZIP and fixes

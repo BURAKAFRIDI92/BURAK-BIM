@@ -162,6 +162,24 @@ jobs:
           Copy-Item "$pkg/*" out/tools/roslyn -Recurse -Force
           Get-ChildItem out/tools/roslyn -Recurse -Include *.pdb,*.xml | Remove-Item -Force
 
+      - name: Compile every Navisworks tool against each year's API
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $failed = @()
+          foreach ($v in @(@('2022', '2022.0.6'), @('2023', '2023.0.7'), @('2024', '2024.0.0'), @('2025', '2025.0.0'), @('2026', '2026.0.0'))) {
+            $api = Join-Path $PWD.Path "refs/navis$($v[0])-dlls"
+            $pkg = Join-Path $PWD.Path "refs/clash$($v[0]).zip"
+            Invoke-WebRequest -UseBasicParsing "https://api.nuget.org/v3-flatcontainer/chuongmep.navis.api.autodesk.navisworks.clash/$($v[1])/chuongmep.navis.api.autodesk.navisworks.clash.$($v[1]).nupkg" -OutFile $pkg
+            $zip = [IO.Compression.ZipFile]::OpenRead($pkg)
+            foreach ($e in $zip.Entries | Where-Object { $_.Name -eq 'Autodesk.Navisworks.Clash.dll' }) { [IO.Compression.ZipFileExtensions]::ExtractToFile($e, (Join-Path $api $e.Name), $true) }
+            $zip.Dispose()
+            ./build/check-navis-packs.ps1 -Csc out/tools/roslyn/csc.exe -Server out/server/BurakBim.Server.exe -Bridge "out/prebuilt/navisworks/$($v[0])/BurakBim.Bridge.Navisworks.dll" -ApiDir $api -Label $v[0]
+            if ($LASTEXITCODE -ne 0) { $failed += $v[0] }
+          }
+          $global:LASTEXITCODE = 0
+          if ($failed.Count -gt 0) { Write-Host "::warning::Navisworks tools with compile errors in: $($failed -join ', ')" }
+
       # Optional code signing: add repository secrets SIGN_PFX_BASE64 (base64 of a .pfx code-signing certificate)
       # and SIGN_PFX_PASSWORD. Without them the build is unsigned (Windows SmartScreen shows "unknown publisher").
       - name: Package ZIP + Setup.exe + Claude Desktop extension

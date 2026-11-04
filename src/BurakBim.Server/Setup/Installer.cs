@@ -221,12 +221,11 @@ public static class Installer
             lines.Add("/define:" + string.Join(";", defines));
             lines.Add($"/out:\"{Path.Combine(dst, proj + ".dll")}\"");
             lines.AddRange(refs.Distinct(StringComparer.OrdinalIgnoreCase).Select(r => $"/reference:\"{r}\""));
-            if (fam == "revit")
-                foreach (var png in new[] { "burakbim-16.png", "burakbim-32.png" })
-                {
-                    var pf = Path.Combine(Setup, "assets", png);
-                    if (File.Exists(pf)) lines.Add($"/resource:\"{pf}\",brand.{png}");
-                }
+            foreach (var png in new[] { "burakbim-16.png", "burakbim-32.png" })
+            {
+                var pf = Path.Combine(Setup, "assets", png);
+                if (File.Exists(pf)) lines.Add($"/resource:\"{pf}\",brand.{png}");
+            }
             foreach (var folder in new[] { "Shared", "BurakBim.Bridge.Core", proj })
                 lines.AddRange(Directory.GetFiles(Path.Combine(Setup, "src", folder), "*.cs").Select(f => $"\"{f}\""));
 

@@ -8,7 +8,7 @@
     <TargetFramework>net48</TargetFramework>
     <AssemblyName>BurakBim.Bridge.Navisworks</AssemblyName>
     <RootNamespace>BurakBim.Bridge.Navisworks</RootNamespace>
-    <Version>1.3.0</Version>
+    <Version>1.3.1</Version>
     <Company>BURAK BIM</Company>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
@@ -33,6 +33,8 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.0" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\burakbim-16.png" LogicalName="brand.burakbim-16.png" />
+    <EmbeddedResource Include="..\..\assets\burakbim-32.png" LogicalName="brand.burakbim-32.png" />
     <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
     <Compile Include="..\BurakBim.Bridge.Core\*.cs" Link="Core\%(Filename)%(Extension)" />
   </ItemGroup>

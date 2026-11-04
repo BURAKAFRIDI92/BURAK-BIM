@@ -1,12 +1,12 @@
-# Publishing BURAK BIM 1.3.0 (installer ZIP, Setup.exe, ZIP, .mcpb)
+# Publishing BURAK BIM 1.3.1 (installer ZIP, Setup.exe, ZIP, .mcpb)
 
 The release binaries are built by GitHub Actions on Windows, from your BURAK-BIM repository. The build creates:
 
 - the self-contained server;
 - the prebuilt bridges for Revit, AutoCAD and Navisworks 2022–2027;
 - the offline compiler;
-- `BURAK-BIM-Installer-1.3.0-win-x64.zip` (`BURAK-BIM-Installer.exe`, `BURAK-BIM-Uninstaller.exe`, guide, checksums);
-- `BURAK-BIM-Setup-1.3.0.exe`, `BURAK-BIM-1.3.0.zip` and `BURAK-BIM-1.3.0.mcpb`.
+- `BURAK-BIM-Installer-1.3.1-win-x64.zip` (`BURAK-BIM-Installer.exe`, `BURAK-BIM-Uninstaller.exe`, guide, checksums);
+- `BURAK-BIM-Setup-1.3.1.exe`, `BURAK-BIM-1.3.1.zip` and `BURAK-BIM-1.3.1.mcpb`.
 
 ## Steps
 
@@ -14,7 +14,7 @@ The release binaries are built by GitHub Actions on Windows, from your BURAK-BIM
 2. Commit and push to `main`:
    ```powershell
    git add -A
-   git commit -m "BURAK BIM 1.3.0"
+   git commit -m "BURAK BIM 1.3.1"
    git push
    ```
 3. On GitHub, open **Actions > build**, wait for the green check (about 15 minutes), and download the **BURAK-BIM** artifact. Then:
@@ -22,8 +22,8 @@ The release binaries are built by GitHub Actions on Windows, from your BURAK-BIM
    - If something failed, download the **build-logs** artifact and send the log to your developer (or to Claude).
 4. To publish a release, tag the commit:
    ```powershell
-   git tag v1.3.0
-   git push origin v1.3.0
+   git tag v1.3.1
+   git push origin v1.3.1
    ```
    The workflow attaches Setup.exe, the ZIP and the .mcpb to a new GitHub Release, with `docs/RELEASE_NOTES.md` as the text.
 

@@ -159,6 +159,7 @@ foreach (ModelItem it in (ModelItemCollection)Items())
 return r;
 
 @@ navis_hide_unselected
+readonly: false
 title: Hide unselected
 host: navisworks
 set: navisworks
@@ -185,6 +186,7 @@ foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.D
 return R("count", r.Count, "items", r);
 
 @@ navis_color
+readonly: false
 title: Override color / transparency
 host: navisworks
 set: navisworks
@@ -208,6 +210,7 @@ if (Has("transparency")) { if (B("temporary")) doc.Models.OverrideTemporaryTrans
 return R("items", items.Count);
 
 @@ navis_reset_appearance
+readonly: false
 title: Reset appearance
 host: navisworks
 set: navisworks
@@ -220,6 +223,7 @@ if (B("all")) { doc.Models.ResetAllPermanentMaterials(); doc.Models.ResetAllTemp
 ModelItemCollection items = Items(); doc.Models.ResetPermanentMaterials(items); return R("reset", items.Count);
 
 @@ navis_color_by_property
+readonly: false
 title: Color by property value
 host: navisworks
 set: navisworks
@@ -246,6 +250,7 @@ foreach (var kv in groups.OrderByDescending(x => x.Value.Count))
 return legend;
 
 @@ navis_transform
+readonly: false
 title: Move / rotate items (override transform)
 host: navisworks
 set: navisworks
@@ -310,6 +315,7 @@ foreach (ModelItem root in doc.Models.RootItems) foreach (ModelItem it in root.D
 return res.OrderBy(k => k.Key).ToDictionary(k => k.Key, k => (object)R("count", (int)k.Value[0], "sum", Math.Round(k.Value[1], 4)));
 
 @@ navis_add_custom_property
+readonly: false
 title: Add custom properties (user data tab)
 host: navisworks
 set: navisworks
@@ -378,6 +384,7 @@ var bb = doc.GetBoundingBox(false);
 return R("models", doc.Models.Count, "items", items, "geometryItems", geo, "sizeM", new List<object> { Math.Round(bb.Size.X * ToMm / 1000, 2), Math.Round(bb.Size.Y * ToMm / 1000, 2), Math.Round(bb.Size.Z * ToMm / 1000, 2) });
 
 @@ navis_required
+readonly: false
 title: Make items required / unrequired
 host: navisworks
 set: navisworks
@@ -410,5 +417,5 @@ arg: author | string | Author
 arg: comments | string | Comments
 code:
 var pp = new PublishProperties { Title = S("title", doc.Title), Author = S("author", "BURAK BIM"), Comments = S("comments", "") };
-doc.PublishFile(S("path"), pp);
+PublishNwd(S("path"), pp);
 return R("published", S("path"));

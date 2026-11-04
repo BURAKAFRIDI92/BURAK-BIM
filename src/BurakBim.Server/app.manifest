@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- BURAK BIM server: runs as the normal user (never asks for admin), DPI-aware, long paths, Windows 10/11. -->
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.3.0.0" name="BurakBim.Server" type="win32" />
+  <assemblyIdentity version="1.3.1.0" name="BurakBim.Server" type="win32" />
   <description>BURAK BIM - BIM and AI connector (MCP server)</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>

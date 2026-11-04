@@ -49,7 +49,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$BurakVersion = '1.3.0'
+$BurakVersion = '1.3.1'
 $RevitAddInId = '8E3B2F7A-4C1D-4B9E-A2F5-6D7C8B9A0E1F'
 $ServerName = 'BURAK-BIM'
 $Package = Split-Path -Parent $PSScriptRoot      # package root (contains src\, installer\, prebuilt\)
