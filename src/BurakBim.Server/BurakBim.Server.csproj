@@ -41,7 +41,7 @@
     <Using Include="System.IO" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="UglyToad.PdfPig" Version="0.1.9" />
+    <PackageReference Include="PdfPig" Version="0.1.9" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Packs\*.pack" />
