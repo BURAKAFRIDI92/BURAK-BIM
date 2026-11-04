@@ -162,6 +162,15 @@ jobs:
           Copy-Item "$pkg/*" out/tools/roslyn -Recurse -Force
           Get-ChildItem out/tools/roslyn -Recurse -Include *.pdb,*.xml | Remove-Item -Force
 
+      - name: Rhino panel plug-in
+        shell: pwsh
+        run: |
+          dotnet build src/BurakBim.Plugin.Rhino/BurakBim.Plugin.Rhino.csproj -c Release -o out/rhino-build
+          if ($LASTEXITCODE -ne 0) { throw "Rhino plug-in failed to compile" }
+          New-Item -ItemType Directory -Force out/prebuilt/rhino | Out-Null
+          Copy-Item out/rhino-build/BurakBim.Rhino.rhp out/prebuilt/rhino/
+          Get-ChildItem out/prebuilt/rhino | ForEach-Object { "$($_.Name) $($_.Length)" }
+
       - name: Compile every Navisworks tool against each year's API
         shell: pwsh
         run: |
@@ -225,15 +234,20 @@ jobs:
             }
           }
           # the contact details reach every tab
-          foreach ($b in @(@('revit', 'Revit'), @('autocad', 'AutoCAD'), @('navisworks', 'Navisworks'))) {
-            $dll = [IO.File]::ReadAllBytes((Join-Path $dir "setup\prebuilt\$($b[0])\2024\BurakBim.Bridge.$($b[1]).dll"))
+          foreach ($file in 'revit\2024\BurakBim.Bridge.Revit.dll', 'autocad\2024\BurakBim.Bridge.AutoCAD.dll', 'navisworks\2024\BurakBim.Bridge.Navisworks.dll', 'rhino\BurakBim.Rhino.rhp') {
+            $b = @($file)
+            $dll = [IO.File]::ReadAllBytes((Join-Path $dir "setup\prebuilt\$file"))
             $latin = [Text.Encoding]::GetEncoding(28591)
             if (-not $latin.GetString($dll).Contains($latin.GetString([Text.Encoding]::Unicode.GetBytes('+923189848904')))) { throw "About text missing from the $($b[0]) bridge" }
           }
           foreach ($f in 'setup\prebuilt\_shared\net48', 'setup\prebuilt\_shared\netcore', 'setup\tools\roslyn\csc.exe', 'setup\src\BurakBim.Bridge.Navisworks') { if (-not (Test-Path (Join-Path $dir $f))) { throw "$f missing from the installer" } }
           Get-ChildItem (Join-Path $dir 'logs') -Filter 'install-*.log' | Get-Content | Write-Host
           # the compiler setup uses for versions without a prebuilt bridge, on each kind of host runtime
-          foreach ($t in @(@('navisworks', 2026, 'navis2026'), @('revit', 2024, 'revit2024'), @('revit', 2026, 'revit2026'), @('autocad', 2024, 'acad2024'), @('autocad', 2027, 'acad2027'))) {
+          # Inventor: compiled against a stand-in, because Autodesk's interop is not on NuGet (see build/stubs)
+          New-Item -ItemType Directory -Force refs/inventor-stub-dlls | Out-Null
+          & out/tools/roslyn/csc.exe /nologo /target:library /platform:x64 /out:refs/inventor-stub-dlls/Autodesk.Inventor.Interop.dll build/stubs/InventorInteropStub.cs
+          if ($LASTEXITCODE -ne 0) { throw "Inventor stand-in failed to compile" }
+          foreach ($t in @(@('navisworks', 2026, 'navis2026'), @('revit', 2024, 'revit2024'), @('revit', 2026, 'revit2026'), @('autocad', 2024, 'acad2024'), @('autocad', 2027, 'acad2027'), @('inventor', 2024, 'inventor-stub'), @('inventor', 2026, 'inventor-stub'))) {
             $api = Join-Path $PWD.Path "refs/$($t[2])-dlls"
             $to = Join-Path $env:RUNNER_TEMP "compiled/$($t[0])/$($t[1])"
             & $exe --home $dir --compile-bridge $t[0] $t[1] $api $to | Write-Host

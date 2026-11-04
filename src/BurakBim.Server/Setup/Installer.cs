@@ -94,6 +94,8 @@ public static class Installer
             try { register(); }
             catch (IOException ex) { Warn("A program is using BURAK BIM files. Close Revit, AutoCAD and Navisworks, then run setup again (" + ex.Message + ")"); }
         }
+        InstallRhinoPanel(products);
+        InstallInventorTab(products);
 
         if (!File.Exists(Path.Combine(root, "config", "burakbim.json")))
             File.WriteAllText(Path.Combine(root, "config", "burakbim.json"), Json.Serialize(Core.Config.Defaults(), true), new UTF8Encoding(false));
@@ -143,6 +145,18 @@ public static class Installer
             var p = Path.Combine(appData, "Autodesk", "ApplicationPlugins", b);
             try { if (Directory.Exists(p)) { Directory.Delete(p, true); Ok("removed " + p); } } catch (Exception ex) { Warn(p + ": " + ex.Message); }
         }
+        for (int y = 2022; y <= 2030; y++)
+        {
+            var f = Path.Combine(appData, "Autodesk", "Inventor " + y, "Addins", "BurakBim.addin");
+            try { if (File.Exists(f)) { File.Delete(f); Ok("removed " + f); } } catch (Exception ex) { Warn(f + ": " + ex.Message); }
+        }
+        try
+        {
+            var rhino = Path.Combine(appData, "McNeel", "Rhinoceros", "packages");
+            if (Directory.Exists(rhino))
+                foreach (var d in Directory.GetDirectories(rhino, "burak-bim", SearchOption.AllDirectories)) { Directory.Delete(d, true); Ok("removed " + d); }
+        }
+        catch (Exception ex) { Warn("Rhino panel: " + ex.Message); }
         try
         {
             var skills = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "skills");
@@ -165,12 +179,13 @@ public static class Installer
         {
             var csc = Path.Combine(Setup, "tools", "roslyn", "csc.exe");
             var shared = Path.Combine(Setup, "prebuilt", "_shared");
-            var hostDir = (p.Exe != null ? Path.GetDirectoryName(p.Exe) : null) ?? p.InstallDir ?? "";
-            var proj = fam switch { "revit" => "BurakBim.Bridge.Revit", "autocad" => "BurakBim.Bridge.AutoCAD", _ => "BurakBim.Bridge.Navisworks" };
+            bool inventor = fam == "inventor";
+            var hostDir = inventor ? p.InstallDir ?? "" : (p.Exe != null ? Path.GetDirectoryName(p.Exe) : null) ?? p.InstallDir ?? "";
+            var proj = fam switch { "revit" => "BurakBim.Bridge.Revit", "autocad" => "BurakBim.Bridge.AutoCAD", "inventor" => "BurakBim.Plugin.Inventor", _ => "BurakBim.Bridge.Navisworks" };
             bool netCore = fam != "navisworks" && year >= 2025;
             var roslyn = Path.Combine(shared, netCore ? "netcore" : "net48");
             if (!File.Exists(csc)) { why = "the bundled compiler is missing"; return false; }
-            if (!Directory.Exists(roslyn)) { why = "the shared libraries are missing: " + roslyn; return false; }
+            if (!inventor && !Directory.Exists(roslyn)) { why = "the shared libraries are missing: " + roslyn; return false; }
 
             var defines = new List<string> { "TRACE", "BURAK_ROSLYN" };
             var refs = new List<string>();
@@ -179,6 +194,12 @@ public static class Installer
                 case "revit":
                     defines.Add("REVIT" + year); if (year >= 2024) defines.Add("REVIT_LONG_IDS");
                     refs.Add(Path.Combine(hostDir, "RevitAPI.dll")); refs.Add(Path.Combine(hostDir, "RevitAPIUI.dll"));
+                    break;
+                case "inventor":
+                    var interop = Path.Combine(hostDir, "Bin", "Public Assemblies", "Autodesk.Inventor.Interop.dll");
+                    if (!File.Exists(interop) && Directory.Exists(hostDir))
+                        interop = Directory.EnumerateFiles(hostDir, "Autodesk.Inventor.Interop.dll", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true }).FirstOrDefault() ?? interop;
+                    refs.Add(interop);
                     break;
                 case "autocad":
                     defines.Add("ACAD" + year);
@@ -191,7 +212,7 @@ public static class Installer
             }
             var absent = refs.FirstOrDefault(r => !File.Exists(r));
             if (absent != null) { why = "not found: " + absent; return false; }
-            refs.AddRange(Directory.GetFiles(roslyn, "*.dll"));
+            if (!inventor) refs.AddRange(Directory.GetFiles(roslyn, "*.dll"));
 
             if (netCore)
             {
@@ -228,7 +249,7 @@ public static class Installer
                 var pf = Path.Combine(Setup, "assets", png);
                 if (File.Exists(pf)) lines.Add($"/resource:\"{pf}\",brand.{png}");
             }
-            foreach (var folder in new[] { "Shared", "BurakBim.Bridge.Core", proj })
+            foreach (var folder in inventor ? new[] { "Shared", proj } : new[] { "Shared", "BurakBim.Bridge.Core", proj })
                 lines.AddRange(Directory.GetFiles(Path.Combine(Setup, "src", folder), "*.cs").Select(f => $"\"{f}\""));
 
             var rsp = Path.Combine(BurakPaths.Root, "logs", $"csc-{fam}-{year}.rsp");
@@ -241,7 +262,7 @@ public static class Installer
             var log = Path.Combine(BurakPaths.Root, "logs", $"csc-{fam}-{year}.log");
             File.WriteAllText(log, output + err.Result);
             if (proc.ExitCode != 0) { why = "the compiler reported errors, see " + log; return false; }
-            CopyDir(shared, Path.Combine(BurakPaths.Root, "bridges", "_shared"));
+            if (!inventor) CopyDir(shared, Path.Combine(BurakPaths.Root, "bridges", "_shared"));
             return File.Exists(Path.Combine(dst, proj + ".dll"));
         }
         catch (Exception ex) { why = ex.Message; return false; }
@@ -353,6 +374,61 @@ public static class Installer
   <CompanyDetails Name=""BURAK BIM"" />
 {comps}</ApplicationPackage>
 ", new UTF8Encoding(false));
+    }
+
+    // ------------------------------------------------------------------ tabs in programs without a bridge
+    /// <summary>Rhino 7+ loads anything in its per-user packages folder. Rhino has no ribbon, so the tab is a panel.</summary>
+    static void InstallRhinoPanel(List<Product> products)
+    {
+        var plugin = Path.Combine(Setup, "prebuilt", "rhino", "BurakBim.Rhino.rhp");
+        foreach (var major in products.Where(p => p.Family == "rhino" && p.Year >= 7).Select(p => p.Year).Distinct())
+        {
+            try
+            {
+                if (!File.Exists(plugin)) { Warn("Rhino " + major + ": the BURAK BIM panel is not in this package."); continue; }
+                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "McNeel", "Rhinoceros", "packages", major + ".0", "burak-bim", BurakInfo.Version);
+                Directory.CreateDirectory(dir);
+                File.Copy(plugin, Path.Combine(dir, "BurakBim.Rhino.rhp"), true);
+                File.WriteAllText(Path.Combine(dir, "manifest.yml"), "name: burak-bim\nversion: " + BurakInfo.Version + "\nauthors:\n- BURAK BIM\ndescription: BURAK BIM panel with connection and contact details\nurl: https://github.com/BURAKAFRIDI92/BURAK-BIM\n", new UTF8Encoding(false));
+                Ok("Rhino " + major + ": BURAK BIM panel installed (open it with the command BurakBim)");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Warn("Rhino " + major + ": close Rhino and run setup again (" + ex.Message + ")"); }
+        }
+    }
+
+    /// <summary>Autodesk's Inventor interop is not on NuGet, so the add-in is compiled here against the installed one.</summary>
+    static void InstallInventorTab(List<Product> products)
+    {
+        foreach (var g in products.Where(p => p.Family == "inventor" && p.Year >= 2022).GroupBy(p => p.Year))
+        {
+            var year = g.Key;
+            var dst = Path.Combine(BurakPaths.Root, "bridges", "inventor", year.ToString());
+            if (!CompileBridge("inventor", year, g.First(), dst, out var why))
+            {
+                Warn($"Inventor {year}: the BURAK BIM tab could not be built ({why}). AI tools still reach Inventor without it.");
+                continue;
+            }
+            try
+            {
+                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Autodesk", "Inventor " + year, "Addins");
+                Directory.CreateDirectory(dir);
+                var dll = System.Security.SecurityElement.Escape(Path.Combine(dst, "BurakBim.Plugin.Inventor.dll"));
+                File.WriteAllText(Path.Combine(dir, "BurakBim.addin"), $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<Addin Type=""Standard"">
+  <ClassId>{{2c53dc5f-5e0b-4cf4-b9db-7c263e34cf41}}</ClassId>
+  <ClientId>{{2c53dc5f-5e0b-4cf4-b9db-7c263e34cf41}}</ClientId>
+  <DisplayName>BURAK BIM</DisplayName>
+  <Description>BURAK BIM tab with connection and contact details</Description>
+  <Assembly>{dll}</Assembly>
+  <LoadOnStartUp>1</LoadOnStartUp>
+  <UserUnloadable>1</UserUnloadable>
+  <Hidden>0</Hidden>
+</Addin>
+", new UTF8Encoding(false));
+                Ok($"Inventor {year}: BURAK BIM tab compiled and registered");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Warn($"Inventor {year}: close Inventor and run setup again ({ex.Message})"); }
+        }
     }
 
     // ------------------------------------------------------------------ skills for Claude Code / Claude Desktop skill folders

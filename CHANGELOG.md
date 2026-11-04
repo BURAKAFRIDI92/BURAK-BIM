@@ -6,6 +6,7 @@ Found in a live test on Navisworks Manage 2027, then checked by comparing the pu
 
 - **BURAK BIM ribbon tab in Navisworks and in AutoCAD and every AutoCAD-based product.** Connection: Status, Reports, Logs. Navisworks also gets Coordination: Model Summary, Clash Summary, TimeLiner Summary.
 - **About section with contact details** on the BURAK BIM tab in Revit, AutoCAD and every AutoCAD-based product, and Navisworks.
+- **BURAK BIM tab in Inventor**, compiled during setup against the installed Inventor, and a **BURAK BIM panel in Rhino 7 and later**, because Rhino has no ribbon. Neither has been tested live yet.
 - **`BURAK-BIM-1.3.0-Complete.zip`** is the one file to share: a single folder with the installer, uninstaller, guide, Claude Desktop extension and checksums.
 - **Clash tools work on Navisworks 2027.** Autodesk removed `DocumentClashTests.Tests`, `TestsAddCopy(ClashTest)` and `TestsRemove(ClashTest)`. All clash tools now use `TestsRoot` and include tests inside folders. These members exist in 2022-2027.
 - **Setting clash status or assignee works on 2026 and 2027**, where Autodesk replaced the string with an `Assignee`.

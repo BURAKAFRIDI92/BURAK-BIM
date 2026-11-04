@@ -32,7 +32,9 @@ PLANSWIFT
 
 BURAK BIM TAB
   Revit, AutoCAD and AutoCAD-based products, and Navisworks show a BURAK BIM tab
-  with an About section. The other supported programs connect without a tab.
+  with an About section. Inventor gets the same tab, built during setup.
+  Rhino has no ribbon, so it gets a BURAK BIM panel (command: BurakBim).
+  The other supported programs connect without a tab.
 
 CONTACT
   WhatsApp: +923189848904
