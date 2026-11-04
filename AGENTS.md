@@ -9,7 +9,7 @@ This guide is for an AI agent that can run PowerShell on the user's Windows PC, 
    - At least one supported program installed (Revit, AutoCAD/Civil 3D, Navisworks, SAP2000, ETABS, CSiBridge, SAFE, Archicad, Bluebeam, PlanSwift, ...).
    - No internet, .NET or admin rights are needed (1.3 ships prebuilt binaries).
 2. Ask the user to **close Revit, AutoCAD and Navisworks**.
-3. Tell the user what will change: the install folder, the bridges for detected software, and the configs of every detected AI app. A `.burakbim.bak` backup is kept for each config. Extract `BURAK-BIM-Installer-<version>-win-x64.zip` and check the files against `SHA256SUMS.txt`.
+3. Tell the user what will change: the install folder, the bridges for detected software, and the configs of every detected AI app. A `.burakbim.bak` backup is kept for each config. Extract `BURAK-BIM-<version>-Complete.zip` and check the files against `SHA256SUMS.txt`.
 4. Install with `BURAK-BIM-Installer.exe`, or silently with `BURAK-BIM-Installer.exe /S /D=E:\BURAK BIM` (`/D=` must come last, without quotes). The default folder is `D:\BURAK BIM`.
    - Setup connects every AI app it detects.
    - To change that afterwards, run `"<folder>\server\BurakBim.Server.exe" --disconnect-clients`, then `--connect-clients claude-desktop,codex`.

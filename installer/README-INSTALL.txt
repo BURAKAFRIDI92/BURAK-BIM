@@ -30,5 +30,11 @@ PLANSWIFT
   Open PlanSwift and a job first. If the connection reports that the API is not
   registered, run PlanSwift once as administrator.
 
-HELP
+BURAK BIM TAB
+  Revit, AutoCAD and AutoCAD-based products, and Navisworks show a BURAK BIM tab
+  with an About section. The other supported programs connect without a tab.
+
+CONTACT
+  WhatsApp: +923189848904
+  LinkedIn: Iftikhar Khan
   https://github.com/BURAKAFRIDI92/BURAK-BIM

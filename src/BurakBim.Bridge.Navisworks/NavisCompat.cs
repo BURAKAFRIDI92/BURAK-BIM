@@ -79,7 +79,11 @@ namespace BurakBim.Bridge.Navisworks
         /// <summary>Picture of a view. 2024+ adds enableSectioning, and the result shows the view's active sections.</summary>
         public static dynamic ViewImage(object view, object style, int width, int height)
         {
-            var m = view.GetType().GetMethods().First(x => x.Name == "GenerateImage" && x.GetParameters().Length >= 3 && x.GetParameters()[3 % x.GetParameters().Length].ParameterType != typeof(double));
+            var m = view.GetType().GetMethods().First(x =>
+            {
+                var p = x.GetParameters();
+                return x.Name == "GenerateImage" && (p.Length == 3 || (p.Length == 4 && p[3].ParameterType == typeof(bool)));
+            });
             var args = m.GetParameters().Length >= 4 ? new[] { style, width, height, (object)true } : new[] { style, width, height };
             try { return m.Invoke(view, args); }
             catch (TargetInvocationException ex) { throw ex.InnerException ?? ex; }

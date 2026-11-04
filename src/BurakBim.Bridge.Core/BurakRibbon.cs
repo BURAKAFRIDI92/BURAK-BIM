@@ -37,6 +37,7 @@ namespace BurakBim.Bridge
         {
             _host = host;
             _actions = actions.ToList();
+            _actions.Add(new RibbonAction { Panel = "About", Text = "About", ToolTip = "About BURAK BIM and contact details.", Run = () => BurakInfo.AboutText });
             _brand = brand;
             _timer = new Timer(Tick, null, 2000, 5000);
         }

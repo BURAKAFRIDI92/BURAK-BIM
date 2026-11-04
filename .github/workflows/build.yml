@@ -199,10 +199,13 @@ jobs:
       - name: Install and uninstall test (the ZIP users download, silent, clean Windows)
         shell: pwsh
         run: |
-          $zip = Get-ChildItem dist -Filter 'BURAK-BIM-Installer-*-win-x64.zip' | Select-Object -First 1
-          if (-not $zip) { throw "installer ZIP was not produced" }
-          $kit = Join-Path $env:RUNNER_TEMP 'kit'
-          Expand-Archive $zip.FullName $kit -Force
+          $zip = Get-ChildItem dist -Filter 'BURAK-BIM-*-Complete.zip' | Select-Object -First 1
+          if (-not $zip) { throw "complete ZIP was not produced" }
+          $unzipped = Join-Path $env:RUNNER_TEMP 'kit'
+          Expand-Archive $zip.FullName $unzipped -Force
+          $top = @(Get-ChildItem $unzipped)
+          if ($top.Count -ne 1 -or -not $top[0].PSIsContainer) { throw "the ZIP must hold exactly one folder" }
+          $kit = $top[0].FullName
           foreach ($f in 'BURAK-BIM-Installer.exe', 'BURAK-BIM-Uninstaller.exe', 'README-INSTALL.txt', 'SHA256SUMS.txt') { if (-not (Test-Path (Join-Path $kit $f))) { throw "$f missing from the ZIP" } }
           foreach ($line in Get-Content (Join-Path $kit 'SHA256SUMS.txt')) {
             $hash, $name = $line -split '\s+', 2
@@ -220,6 +223,11 @@ jobs:
               if ($b[0] -eq 'navisworks' -and $y -eq 2027) { continue }
               if (-not (Test-Path (Join-Path $dir "setup\prebuilt\$($b[0])\$y\BurakBim.Bridge.$($b[1]).dll"))) { throw "prebuilt bridge missing from the installer: $($b[0]) $y" }
             }
+          }
+          # the contact details reach every tab
+          foreach ($b in @(@('revit', 'Revit'), @('autocad', 'AutoCAD'), @('navisworks', 'Navisworks'))) {
+            $dll = [IO.File]::ReadAllBytes((Join-Path $dir "setup\prebuilt\$($b[0])\2024\BurakBim.Bridge.$($b[1]).dll"))
+            if (-not [Text.Encoding]::Unicode.GetString($dll).Contains('+923189848904')) { throw "About text missing from the $($b[0]) bridge" }
           }
           foreach ($f in 'setup\prebuilt\_shared\net48', 'setup\prebuilt\_shared\netcore', 'setup\tools\roslyn\csc.exe', 'setup\src\BurakBim.Bridge.Navisworks') { if (-not (Test-Path (Join-Path $dir $f))) { throw "$f missing from the installer" } }
           Get-ChildItem (Join-Path $dir 'logs') -Filter 'install-*.log' | Get-Content | Write-Host

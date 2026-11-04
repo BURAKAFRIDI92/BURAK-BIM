@@ -1,14 +1,14 @@
-# BURAK BIM 1.3.1
+# BURAK BIM 1.3.0
 
 **This release makes BURAK BIM work in every version on every PC, lets the AI see the model, and adds a way to reach every command.**
 
 ## Download
-- **`BURAK-BIM-Installer-1.3.1-win-x64.zip`**: start here. It contains `BURAK-BIM-Installer.exe`, `BURAK-BIM-Uninstaller.exe`, a short guide and checksums. No internet, no .NET and no admin rights are needed.
-- `BURAK-BIM-Setup-1.3.1.exe`: the same installer on its own.
-- **`BURAK-BIM-1.3.1.mcpb`**: a one-click Claude Desktop extension. Double-click it.
-- `BURAK-BIM-1.3.1.zip`: the same package, for `installer\install.ps1`.
+- **`BURAK-BIM-1.3.0-Complete.zip`**: start here. It contains `BURAK-BIM-Installer.exe`, `BURAK-BIM-Uninstaller.exe`, a short guide and checksums. No internet, no .NET and no admin rights are needed.
+- `BURAK-BIM-Setup-1.3.0.exe`: the same installer on its own.
+- **`BURAK-BIM-1.3.0.mcpb`**: a one-click Claude Desktop extension. Double-click it.
+- `BURAK-BIM-1.3.0.zip`: the same package, for `installer\install.ps1`.
 
-## New in 1.3.1
+## Latest fixes
 - **BURAK BIM tab in Navisworks and AutoCAD** (and every AutoCAD-based product), next to the one Revit already has.
 - **Clash Detective works on Navisworks 2027.** Autodesk removed `DocumentClashTests.Tests` in 2027, which stopped every clash tool.
 - **Clash status, assignee and NWD publishing work on Navisworks 2026 and 2027**, where Autodesk changed those calls.
