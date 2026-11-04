@@ -205,6 +205,16 @@ jobs:
           }
           foreach ($f in 'setup\prebuilt\_shared\net48', 'setup\prebuilt\_shared\netcore', 'setup\tools\roslyn\csc.exe', 'setup\src\BurakBim.Bridge.Navisworks') { if (-not (Test-Path (Join-Path $dir $f))) { throw "$f missing from the installer" } }
           Get-ChildItem (Join-Path $dir 'logs') -Filter 'install-*.log' | Get-Content | Write-Host
+          # the compiler setup uses for versions without a prebuilt bridge, on each kind of host runtime
+          foreach ($t in @(@('navisworks', 2026, 'navis2026'), @('revit', 2024, 'revit2024'), @('revit', 2026, 'revit2026'), @('autocad', 2024, 'acad2024'), @('autocad', 2027, 'acad2027'))) {
+            $api = Join-Path $PWD.Path "refs/$($t[2])-dlls"
+            $to = Join-Path $env:RUNNER_TEMP "compiled/$($t[0])/$($t[1])"
+            & $exe --home $dir --compile-bridge $t[0] $t[1] $api $to | Write-Host
+            if ($LASTEXITCODE -ne 0) {
+              Get-Content (Join-Path $dir "logs/csc-$($t[0])-$($t[1]).log") -ErrorAction SilentlyContinue | Select-Object -First 40 | Write-Host
+              throw "bridge compile failed: $($t[0]) $($t[1])"
+            }
+          }
           & $exe --home $dir --doctor | Write-Host
           if ($LASTEXITCODE -ne 0) { throw "--doctor exit $LASTEXITCODE" }
           schtasks /Query /TN "BURAK BIM Sentinel" 2>$null | Out-Null

@@ -246,6 +246,17 @@ public static class Installer
         catch (Exception ex) { why = ex.Message; return false; }
     }
 
+    /// <summary>--compile-bridge FAMILY YEAR API_FOLDER OUTPUT_FOLDER: the compile step of setup on its own (used by CI).</summary>
+    public static int CompileBridgeCommand(string[] args)
+    {
+        var a = args.SkipWhile(x => x != "--compile-bridge").Skip(1).ToArray();
+        if (a.Length < 4 || !int.TryParse(a[1], out var year)) { Console.WriteLine("Usage: --compile-bridge FAMILY YEAR API_FOLDER OUTPUT_FOLDER"); return 2; }
+        var product = new Product { Name = a[0] + " " + year, Family = a[0], Year = year, InstallDir = a[2] };
+        if (CompileBridge(a[0], year, product, a[3], out var why)) { Console.WriteLine($"OK {a[0]} {year}"); return 0; }
+        Console.WriteLine($"FAILED {a[0]} {year}: {why}");
+        return 1;
+    }
+
     static bool IsManaged(string file)
     {
         try { System.Reflection.AssemblyName.GetAssemblyName(file); return true; }

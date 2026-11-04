@@ -6,6 +6,7 @@ using BurakBim.Shared;
 
 namespace BurakBim.Bridge
 {
+    using Json = BurakBim.Shared.Json;
     public static class CoreCommands
     {
         /// <summary>True when a value is already JSON (primitives, string-keyed dictionaries, lists of those).</summary>

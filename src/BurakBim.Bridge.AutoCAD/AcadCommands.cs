@@ -11,6 +11,7 @@ using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
 
 namespace BurakBim.Bridge.AutoCAD
 {
+    using Json = BurakBim.Shared.Json;
     public static class AcadCommands
     {
         const string RegApp = "BURAKBIM";

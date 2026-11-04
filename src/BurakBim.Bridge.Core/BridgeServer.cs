@@ -11,6 +11,7 @@ using BurakBim.Shared;
 
 namespace BurakBim.Bridge
 {
+    using Json = BurakBim.Shared.Json;
     public delegate object BridgeHandler(Dictionary<string, object> p);
 
     public sealed class BridgeCommand

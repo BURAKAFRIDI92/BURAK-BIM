@@ -74,6 +74,8 @@ public static class Program
                 return Setup.Installer.Install(args);
             case "--rescan":
                 return Setup.Installer.Install(args, rescan: true);
+            case "--compile-bridge":
+                return Setup.Installer.CompileBridgeCommand(args);
             case "--uninstall":
                 return Setup.Installer.Uninstall(args);
             case "--mcp-selftest":
