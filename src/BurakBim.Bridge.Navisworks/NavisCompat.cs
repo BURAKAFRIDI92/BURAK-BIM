@@ -76,6 +76,15 @@ namespace BurakBim.Bridge.Navisworks
             Invoke(m, doc, ps.Length >= 3 ? new[] { path, Activator.CreateInstance(ps[1].ParameterType), properties } : new[] { path, properties });
         }
 
+        /// <summary>Picture of a view. 2024+ adds enableSectioning, and the result shows the view's active sections.</summary>
+        public static dynamic ViewImage(object view, object style, int width, int height)
+        {
+            var m = view.GetType().GetMethods().First(x => x.Name == "GenerateImage" && x.GetParameters().Length >= 3 && x.GetParameters()[3 % x.GetParameters().Length].ParameterType != typeof(double));
+            var args = m.GetParameters().Length >= 4 ? new[] { style, width, height, (object)true } : new[] { style, width, height };
+            try { return m.Invoke(view, args); }
+            catch (TargetInvocationException ex) { throw ex.InnerException ?? ex; }
+        }
+
         static MethodInfo Method(object target, string name)
         {
             return target.GetType().GetMethods().First(x => x.Name == name);

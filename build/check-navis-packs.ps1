@@ -7,7 +7,7 @@
 .DESCRIPTION
   Each snippet becomes a method of a class deriving from the bridge's NavisScriptGlobals. Snippets are normally
   compiled as C# scripts at run time, so two script-only differences are ignored: CS0161 (a script may end without
-  return) and CS0246/CS0234 for the TimeLiner namespace when that year's TimeLiner reference is not available.
+  return) and CS0246/CS0234 for the TimeLiner and COM namespaces when that year's reference for them is not available.
 
 .PARAMETER Csc       Path to csc.exe.
 .PARAMETER Server    Path to BurakBim.Server.exe (provides the snippets with --packs-json).
@@ -61,7 +61,8 @@ $lines += "`"$source`""
 
 $output = & $Csc "@$rsp" 2>&1 | ForEach-Object { "$_" }
 $errors = @($output | Where-Object { $_ -match ': error CS' })
-$ignored = @($errors | Where-Object { $_ -match 'error CS0161' -or (-not $hasTimeliner -and $_ -match 'error CS02(46|34).*Timeliner') })
+$hasComApi = Test-Path (Join-Path $ApiDir 'Autodesk.Navisworks.ComApi.dll')
+$ignored = @($errors | Where-Object { $_ -match 'error CS0161' -or (-not $hasTimeliner -and $_ -match 'error CS02(46|34).*Timeliner') -or (-not $hasComApi -and $_ -match 'error CS02(46|34).*ComApi') })
 $real = @($errors | Where-Object { $ignored -notcontains $_ })
 Write-Host "Navisworks tools $Label : $($tools.Count) tools, $($real.Count) errors"
 $real | ForEach-Object { $_ -replace '^.*\\', '' } | Select-Object -Unique -First 40 | ForEach-Object { Write-Host "  PACK $Label $_" }

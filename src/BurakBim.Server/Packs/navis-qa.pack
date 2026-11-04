@@ -633,7 +633,7 @@ walk = (g, inside) =>
         if (s is GroupItem) { walk((GroupItem)s, inside || string.Equals(s.DisplayName, S("viewpointFolder"), StringComparison.OrdinalIgnoreCase)); continue; }
         var sv = s as SavedViewpoint; if (sv == null || (Has("viewpointFolder") && !inside)) continue;
         doc.SavedViewpoints.CurrentSavedViewpoint = sv;
-        var bmp = doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, I("width", 1600), I("height", 900));
+        var bmp = ViewImage(I("width", 1600), I("height", 900));
         var name = string.Join("_", sv.DisplayName.Split(System.IO.Path.GetInvalidFileNameChars()));
         var path = System.IO.Path.Combine(S("folder"), (done.Count + 1).ToString("000") + "_" + name + ".png");
         bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png); bmp.Dispose(); done.Add(path);

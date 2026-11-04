@@ -12,6 +12,7 @@
 - **BURAK BIM tab in Navisworks and AutoCAD** (and every AutoCAD-based product), next to the one Revit already has.
 - **Clash Detective works on Navisworks 2027.** Autodesk removed `DocumentClashTests.Tests` in 2027, which stopped every clash tool.
 - **Clash status, assignee and NWD publishing work on Navisworks 2026 and 2027**, where Autodesk changed those calls.
+- **Image exports work on Navisworks 2024 and later**, including the HTML clash report.
 - **Read-only mode now blocks 30 Navisworks tools** that change the model or view but were marked as read-only.
 
 ## Highlights

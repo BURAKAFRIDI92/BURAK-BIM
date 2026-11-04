@@ -112,7 +112,7 @@ arg: height | integer | Height px (default 1080)
 arg: path | string | Output .png (default exports folder)
 code:
 if (Has("viewpoint")) foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children) if (it.DisplayName == S("viewpoint")) doc.SavedViewpoints.CurrentSavedViewpoint = (SavedViewpoint)it;
-var bmp = doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, I("width", 1920), I("height", 1080));
+var bmp = ViewImage(I("width", 1920), I("height", 1080));
 var path = S("path") ?? System.IO.Path.Combine(BurakBim.Shared.BurakPaths.Sub("exports", "navisworks"), "view-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png");
 bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
 return R("image", path);
@@ -132,7 +132,7 @@ var folder = S("folder") ?? BurakBim.Shared.BurakPaths.Sub("exports", "naviswork
 foreach (SavedItem it in doc.SavedViewpoints.RootItem.Children)
 {
     var sv = it as SavedViewpoint; if (sv == null) continue; doc.SavedViewpoints.CurrentSavedViewpoint = sv;
-    var bmp = doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, I("width", 1600), I("height", 900));
+    var bmp = ViewImage(I("width", 1600), I("height", 900));
     var f = System.IO.Path.Combine(folder, string.Concat(sv.DisplayName.Split(System.IO.Path.GetInvalidFileNameChars())) + ".png"); bmp.Save(f, System.Drawing.Imaging.ImageFormat.Png); files.Add(f);
 }
 return R("folder", folder, "images", files);
@@ -441,7 +441,7 @@ foreach (var r in all)
     if (r.Status.ToString() != S("status", "New")) continue; if (n++ >= I("limit", 30)) break;
     var items = new ModelItemCollection(); ModelItem a = r.Item1; ModelItem b = r.Item2; if (a != null) items.Add(a); if (b != null) items.Add(b);
     doc.CurrentSelection.CopyFrom(items); var vp = doc.CurrentViewpoint.CreateCopy(); vp.ZoomBox(items.BoundingBox()); doc.CurrentViewpoint.CopyFrom(vp);
-    var img = "clash" + n + ".png"; doc.ActiveView.GenerateImage(ImageGenerationStyle.ScenePlusOverlay, 800, 500).Save(System.IO.Path.Combine(folder, img), System.Drawing.Imaging.ImageFormat.Png);
+    var img = "clash" + n + ".png"; ViewImage(800, 500).Save(System.IO.Path.Combine(folder, img), System.Drawing.Imaging.ImageFormat.Png);
     sb.Append("<tr><td><img src='" + img + "' width='400'></td><td><b>" + (string)r.DisplayName + "</b><br>Distance: " + Math.Round((double)r.Distance * ToMm, 1) + " mm<br>" + System.Net.WebUtility.HtmlEncode(a == null ? "" : PathOf(a)) + "<br>vs<br>" + System.Net.WebUtility.HtmlEncode(b == null ? "" : PathOf(b)) + "</td></tr>");
 }
 sb.Append("</table></body></html>"); var file = System.IO.Path.Combine(folder, "index.html"); System.IO.File.WriteAllText(file, sb.ToString());

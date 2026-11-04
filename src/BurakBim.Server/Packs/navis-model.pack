@@ -46,8 +46,8 @@ foreach (var o in A("conditions").OfType<Dictionary<string, object>>())
     else if (op == "notequals") c = c.CompareWith(SearchConditionComparison.NotEqual, VariantData.FromDisplayString(val));
     else if (op == "contains") c = c.DisplayStringContains(val);
     else if (op == "wildcard") c = c.DisplayStringWildcard(val);
-    else if (op == "greater") c = c.CompareWith(SearchConditionComparison.GreaterThan, VariantData.FromDouble(double.Parse(val, System.Globalization.CultureInfo.InvariantCulture)));
-    else if (op == "less") c = c.CompareWith(SearchConditionComparison.LessThan, VariantData.FromDouble(double.Parse(val, System.Globalization.CultureInfo.InvariantCulture)));
+    else if (op == "greater") c = c.CompareWith(SearchConditionComparison.NumericGreaterThan, VariantData.FromDouble(double.Parse(val, System.Globalization.CultureInfo.InvariantCulture)));
+    else if (op == "less") c = c.CompareWith(SearchConditionComparison.NumericLessThan, VariantData.FromDouble(double.Parse(val, System.Globalization.CultureInfo.InvariantCulture)));
     if (op != "defined" && op != "greater" && op != "less") c = c.IgnoreStringValueCase();
     s.SearchConditions.Add(c);
 }
