@@ -84,7 +84,7 @@ namespace BurakBim.Plugin.RhinoTab
         }
     }
 
-    public sealed class BurakBimCommand : Command
+    public sealed class BurakBimCommand : Rhino.Commands.Command
     {
         public override string EnglishName { get { return "BurakBim"; } }
 
@@ -95,7 +95,7 @@ namespace BurakBim.Plugin.RhinoTab
         }
     }
 
-    public sealed class BurakBimAboutCommand : Command
+    public sealed class BurakBimAboutCommand : Rhino.Commands.Command
     {
         public override string EnglishName { get { return "BurakBimAbout"; } }
 
