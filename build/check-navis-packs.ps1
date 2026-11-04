@@ -56,12 +56,13 @@ foreach ($n in 'mscorlib', 'System', 'System.Core', 'System.Xml', 'System.Xml.Li
     if (Test-Path $f) { $refs += $f }
 }
 $rsp = Join-Path $work 'packs.rsp'
-$lines = @('/nologo', '/target:library', '/platform:x64', '/noconfig', '/nostdlib+', '/langversion:latest', '/nowarn:CS0162,CS0168,CS0219,CS0618,CS1701,CS1702,CS8632', "/out:`"$(Join-Path $work 'packs.dll')`"")
+$lines = @('/nologo', '/target:library', '/platform:x64', '/nostdlib+', '/langversion:latest', '/nowarn:CS0162,CS0168,CS0219,CS0618,CS1701,CS1702,CS8632', "/out:`"$(Join-Path $work 'packs.dll')`"")
 $lines += $refs | ForEach-Object { "/reference:`"$_`"" }
 $lines += "`"$source`""
 [IO.File]::WriteAllLines($rsp, $lines)
 
-$output = & $Csc "@$rsp" 2>&1 | ForEach-Object { "$_" }
+# /noconfig only works on the command line: inside a response file the compiler ignores it
+$output = & $Csc /noconfig "@$rsp" 2>&1 | ForEach-Object { "$_" }
 $errors = @($output | Where-Object { $_ -match ': error CS' })
 $hasComApi = Test-Path (Join-Path $ApiDir 'Autodesk.Navisworks.ComApi.dll')
 $ignored = @($errors | Where-Object { $_ -match 'error CS0161' -or (-not $hasTimeliner -and $_ -match 'error CS02(46|34).*Timeliner') -or (-not $hasComApi -and $_ -match 'error CS02(46|34).*ComApi') })

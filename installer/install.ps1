@@ -445,7 +445,7 @@ function Invoke-OfflineBridgeBuild($t, [string]$Out) {
     $srcFiles += Get-ChildItem (Join-Path $Src $proj) -Filter *.cs
     New-Item -ItemType Directory -Force -Path $Out | Out-Null
     $rsp = Join-Path $LogDir "csc-$($t.Key).rsp"
-    $lines = @('/nologo', '/target:library', '/platform:x64', '/optimize+', '/langversion:latest', '/nowarn:CS0618,CS0219,CS1701,CS1702,CS8632,CS0168', '/noconfig')
+    $lines = @('/nologo', '/target:library', '/platform:x64', '/optimize+', '/langversion:latest', '/nowarn:CS0618,CS0219,CS1701,CS1702,CS8632,CS0168')
     if ($nostd) { $lines += '/nostdlib+' }
     $lines += ('/define:' + ($defines -join ';'))
     $lines += ('/out:"' + (Join-Path $Out "$proj.dll") + '"')
@@ -456,7 +456,7 @@ function Invoke-OfflineBridgeBuild($t, [string]$Out) {
     foreach ($f in $srcFiles) { $lines += ('"' + $f.FullName + '"') }
     [IO.File]::WriteAllLines($rsp, $lines)
     $log = Join-Path $LogDir "csc-$($t.Key).log"
-    $proc = Start-Process -FilePath $csc -ArgumentList "@`"$rsp`"" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+    $proc = Start-Process -FilePath $csc -ArgumentList "/noconfig @`"$rsp`"" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
     if ($proc.ExitCode -ne 0) { $tail = (Get-Content $log -Tail 12 -ErrorAction SilentlyContinue) -join "`n"; throw "compile failed (see $log)`n$tail" }
     $sharedDest = Join-Path $InstallDir 'bridges\_shared'
     Copy-Item $shared (Join-Path $InstallDir 'bridges') -Recurse -Force

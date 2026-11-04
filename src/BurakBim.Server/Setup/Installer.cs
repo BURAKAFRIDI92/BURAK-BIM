@@ -240,7 +240,7 @@ public static class Installer
             }
 
             Directory.CreateDirectory(dst);
-            var lines = new List<string> { "/nologo", "/target:library", "/platform:x64", "/optimize+", "/langversion:latest", "/nowarn:CS0618,CS0219,CS1701,CS1702,CS8632,CS0168", "/noconfig", "/nostdlib+" };
+            var lines = new List<string> { "/nologo", "/target:library", "/platform:x64", "/optimize+", "/langversion:latest", "/nowarn:CS0618,CS0219,CS1701,CS1702,CS8632,CS0168", "/nostdlib+" };
             lines.Add("/define:" + string.Join(";", defines));
             lines.Add($"/out:\"{Path.Combine(dst, proj + ".dll")}\"");
             lines.AddRange(refs.Distinct(StringComparer.OrdinalIgnoreCase).Select(r => $"/reference:\"{r}\""));
@@ -254,7 +254,7 @@ public static class Installer
 
             var rsp = Path.Combine(BurakPaths.Root, "logs", $"csc-{fam}-{year}.rsp");
             File.WriteAllLines(rsp, lines, new UTF8Encoding(false));
-            var psi = new System.Diagnostics.ProcessStartInfo(csc, $"\"@{rsp}\"") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            var psi = new System.Diagnostics.ProcessStartInfo(csc, $"/noconfig \"@{rsp}\"") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             using var proc = System.Diagnostics.Process.Start(psi)!;
             var err = proc.StandardError.ReadToEndAsync();
             var output = proc.StandardOutput.ReadToEnd();
