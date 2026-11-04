@@ -12,7 +12,9 @@ Found in a live test on Navisworks Manage 2027, then checked by comparing the pu
 - **Setting clash status or assignee works on 2026 and 2027**, where Autodesk replaced the string with an `Assignee`.
 - **`navis_comment_add` works on 2027**, where a comment's author changed from a string to an `Assignee`.
 - **`navis_publish_nwd` works on 2026 and 2027**, where `PublishFile` needs `NwdExportOptions`. It now warns that Navisworks uses the published NWD as the open model.
-- **Setup's compiler ignores no default references.** `/noconfig` was in the response file, where the compiler ignores it, so .NET Framework DLLs could clash in a .NET 8 or .NET 10 compile.
+- **Setup's compiler uses only the references it was given.** `/noconfig` was in the response file, where the compiler ignores it, so .NET Framework DLLs could clash in a .NET 8 or .NET 10 compile.
+- **Claude Desktop from the Microsoft Store keeps its settings.** Setup created a private config holding only BURAK-BIM, which hid the user's other servers and preferences. A new private config now starts from the real one, and a config left by the earlier build is repaired.
+- **Setup asks you to close Claude Desktop and your BIM programs first.** Claude Desktop rewrites its config when it quits, which can remove a new entry, so setup also warns if it is still open.
 - **Upgrades from 1.2.** Setup now stops an older server running through `dotnet.exe`, and asks you to close your programs when a bridge file is in use.
 - **Navisworks images work on 2024 and later.** `navis_image_export`, `navis_viewpoint_images`, `navis_clash_report_html` and `navis_documentation_snapshot` used a `GenerateImage` call that Autodesk changed in 2024.
 - **`navis_select_by_property` greater and less work.** They used names that do not exist in the API, and a Navisworks search only matches values of the same data type. Numbers are now compared directly, including whole numbers, lengths, areas, volumes and angles.

@@ -232,7 +232,8 @@ public static class ClientConnector
                 updated = "name: BURAK BIM\nversion: " + BurakInfo.Version + "\nschema: v1\nmcpServers:\n  - name: " + ServerKey + "\n    command: '" + exe.Replace("'", "''") + "'\n    args: []\n    env:\n      BURAK_BIM_HOME: '" + BurakPaths.Root.Replace("'", "''") + "'\n";
                 break;
             default:
-                var root = original.Trim().Length == 0 ? new Dictionary<string, object>() : ParseLenient(original, file);
+                var start = add ? SeedStoreConfig(file, original) : original;
+                var root = start.Trim().Length == 0 ? new Dictionary<string, object>() : ParseLenient(start, file);
                 var container = kind switch { "servers" => "servers", "opencode" => "mcp", "zed" => "context_servers", _ => "mcpServers" };
                 if (Json.Get(root, container) is not Dictionary<string, object> servers)
                 {
@@ -270,6 +271,22 @@ public static class ClientConnector
         File.Copy(tmp, file, true);
         File.Delete(tmp);
         return true;
+    }
+
+    /// <summary>
+    /// The Microsoft Store app prefers a config in its private folder over the one in %APPDATA%. A new private config must
+    /// therefore start from the real one, or it hides the user's other servers and preferences. 1.3.0 left a private config
+    /// holding only our entry, so that exact case is repaired too. A private config with anything else in it is left alone.
+    /// </summary>
+    static string SeedStoreConfig(string file, string original)
+    {
+        if (file.IndexOf(@"\LocalCache\Roaming\Claude\", StringComparison.OrdinalIgnoreCase) < 0) return original;
+        var real = P(AppData, "Claude", "claude_desktop_config.json");
+        if (!File.Exists(real)) return original;
+        if (original.Trim().Length == 0) return File.ReadAllText(real);
+        var current = ParseLenient(original, file);
+        bool onlyOurs = current.Count == 1 && Json.Get(current, "mcpServers") is Dictionary<string, object> s && s.Count == 1 && s.ContainsKey(ServerKey);
+        return onlyOurs ? File.ReadAllText(real) : original;
     }
 
     static void Backup(string file)

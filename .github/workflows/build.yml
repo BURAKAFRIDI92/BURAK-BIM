@@ -233,6 +233,20 @@ jobs:
               if (-not (Test-Path (Join-Path $dir "setup\prebuilt\$($b[0])\$y\BurakBim.Bridge.$($b[1]).dll"))) { throw "prebuilt bridge missing from the installer: $($b[0]) $y" }
             }
           }
+          # Store-app Claude Desktop: a new private config must keep the real one's servers and preferences
+          $real = Join-Path $env:APPDATA 'Claude'; New-Item -ItemType Directory -Force $real | Out-Null
+          Set-Content (Join-Path $real 'claude_desktop_config.json') '{"preferences":{"keep":true},"mcpServers":{"other":{"command":"other.exe"}}}' -Encoding ascii
+          $pkg = Join-Path $env:LOCALAPPDATA 'Packages\Claude_citest'; $store = Join-Path $pkg 'LocalCache\Roaming\Claude'; New-Item -ItemType Directory -Force $store | Out-Null
+          $storeCfg = Join-Path $store 'claude_desktop_config.json'
+          foreach ($case in 'new private config', 'private config left by 1.3.0') {
+            if ($case -like 'new*') { Remove-Item $storeCfg -ErrorAction SilentlyContinue } else { Set-Content $storeCfg '{"mcpServers":{"BURAK-BIM":{"command":"x"}}}' -Encoding ascii }
+            & $exe --home $dir --connect-clients claude-desktop | Out-Null
+            $c = Get-Content $storeCfg -Raw | ConvertFrom-Json
+            if (-not $c.mcpServers.other -or -not $c.mcpServers.'BURAK-BIM' -or -not $c.preferences.keep) { throw "Store config lost data: $case" }
+            Write-Host "Store config kept the user's data: $case"
+          }
+          Remove-Item $pkg -Recurse -Force
+
           # the contact details reach every tab
           foreach ($file in 'revit\2024\BurakBim.Bridge.Revit.dll', 'autocad\2024\BurakBim.Bridge.AutoCAD.dll', 'navisworks\2024\BurakBim.Bridge.Navisworks.dll', 'rhino\BurakBim.Rhino.rhp') {
             $b = @($file)

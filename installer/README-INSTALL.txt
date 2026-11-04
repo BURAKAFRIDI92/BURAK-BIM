@@ -5,7 +5,9 @@ INSTALL
   1. Close Revit, AutoCAD, Navisworks and your AI apps.
   2. Double-click BURAK-BIM-Installer.exe.
      No administrator rights, no internet and no .NET are needed.
-  3. Fully quit and restart your AI app (Claude Desktop: quit from the tray icon).
+  3. Open your AI app. If Claude Desktop does not show BURAK BIM, quit it from the tray
+     icon, use Start menu > BURAK BIM > Connect AI apps again, and open it again.
+     Look in Claude Desktop under Settings > Developer.
   4. Open your BIM software and ask your AI app: "Use BURAK BIM: burak_status"
 
 UNINSTALL

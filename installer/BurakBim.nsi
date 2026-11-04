@@ -58,6 +58,17 @@ VIAddVersionKey "LegalCopyright" "BURAK BIM"
 
 Var Clients
 
+; $R0 program file, $R1 name to show. Retry checks again, Cancel carries on and setup reports what could not be done.
+Function AskToClose
+  retry:
+    nsExec::ExecToStack 'cmd /c tasklist /NH /FI "IMAGENAME eq $R0" | "$SYSDIR\find.exe" /I "$R0"'
+    Pop $0
+    Pop $1
+    StrCmp $0 "0" 0 done
+    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Please close $R1, then click Retry.$\r$\n$\r$\nIf it stays open, BURAK BIM may not connect to it." /SD IDCANCEL IDRETRY retry
+  done:
+FunctionEnd
+
 Function .onInit
   ; D:\ when it exists, otherwise %LOCALAPPDATA%\BURAK BIM (the user may change it on the next page, or pass /D=)
   ReadRegStr $0 HKCU "Software\BURAK BIM" "InstallDir"
@@ -77,6 +88,18 @@ FunctionEnd
 ; no scheduled tasks, no downloads, no admin rights - nothing that antivirus heuristics treat as suspicious.
 Section "!BURAK BIM core (server, bridges for every detected version, skills)" SecCore
   SectionIn RO
+  StrCpy $R0 "Claude.exe"
+  StrCpy $R1 "Claude Desktop (right-click its tray icon and choose Quit)"
+  Call AskToClose
+  StrCpy $R0 "Revit.exe"
+  StrCpy $R1 "Revit"
+  Call AskToClose
+  StrCpy $R0 "acad.exe"
+  StrCpy $R1 "AutoCAD"
+  Call AskToClose
+  StrCpy $R0 "Roamer.exe"
+  StrCpy $R1 "Navisworks"
+  Call AskToClose
   ; stop a running server from an older version so its files can be replaced
   nsExec::Exec 'taskkill /F /IM BurakBim.Server.exe'
   Pop $0
