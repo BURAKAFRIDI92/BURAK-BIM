@@ -7,6 +7,8 @@
 - **Standalone uninstaller.** It finds the install folder from the registry and runs the uninstaller of the installed version, so it also removes older versions.
 - **Upgrades remove the old logon task.** The "BURAK BIM Sentinel" task from older versions ran hidden PowerShell at logon. 1.3 no longer creates it, and both install and uninstall now delete it.
 - **`bluebeam_script` works in folders with spaces**, including the default `D:\BURAK BIM`. The script path was passed without quotes.
+- **`install.ps1` no longer creates the logon task by default.** It is now opt-in with `-Sentinel`.
+- **The server restores again.** The stable NuGet package is `PdfPig`, not `UglyToad.PdfPig`.
 - **Setup honours `/D=<folder>`** and never waits on a message box during a silent install.
 - **CI now installs and uninstalls the ZIP** on a clean Windows machine, and fails if a skill names a tool that does not exist.
 

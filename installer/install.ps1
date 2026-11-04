@@ -15,15 +15,16 @@
   6. Registers "BURAK-BIM" in every AI client found: Claude Desktop (classic + Store), Claude Code, Codex,
      Cursor, Windsurf, Google Antigravity, Gemini CLI, VS Code, Visual Studio, Cline, Roo, Kilo, LM Studio, Kiro,
      Amazon Q, Trae, Continue, opencode (BurakBim.Server.exe --connect-clients; backups are kept).
-  7. Installs the "BURAK BIM Sentinel" (runs at logon): new Autodesk versions installed later are
-     detected and connected automatically.
+  7. Removes the "BURAK BIM Sentinel" logon task of older versions. With -Sentinel it installs the task instead,
+     so new Autodesk versions installed later are detected and connected automatically.
 
 .PARAMETER InstallDir   Install folder. Default: D:\BURAK BIM (falls back to another non-system drive, then %LOCALAPPDATA%).
 .PARAMETER Clients      auto (every detected client) | none | comma list:
                         claude-desktop,claude-code,codex,cursor,windsurf,antigravity,gemini,vscode
 .PARAMETER Rescan       Sentinel mode: only detect new software and build/register missing bridges.
 .PARAMETER Quiet        Less console output.
-.PARAMETER NoSentinel   Do not install the logon sentinel task.
+.PARAMETER Sentinel     Install the logon sentinel task (off by default).
+.PARAMETER NoSentinel   Kept for compatibility; the task is off unless -Sentinel is given.
 .PARAMETER SearchPaths  Extra folders that contain Autodesk software installed in custom places
                         (e.g. "D:\ALL PROGRAMS"). Remembered for later rescans.
 .PARAMETER LocalBuild   Ignore prebuilt bridges and compile every bridge on this PC.
@@ -40,6 +41,7 @@ param(
     [string]$Clients = 'auto',
     [switch]$Rescan,
     [switch]$Quiet,
+    [switch]$Sentinel,
     [switch]$NoSentinel,
     [string[]]$SearchPaths,
     [switch]$LocalBuild
@@ -273,7 +275,7 @@ if ($Rescan) {
 if ($WhatIfPreference) {
     Write-Step 'WhatIf summary'
     Write-Info "Would copy BURAK BIM to $InstallDir, build server + bridges for: $(($bridgeTargets | ForEach-Object { $_.Key }) -join ', ')"
-    Write-Info "Would register AI clients: $Clients ; sentinel: $(-not $NoSentinel)"
+    Write-Info "Would register AI clients: $Clients ; sentinel: $($Sentinel -and -not $NoSentinel)"
     exit 0
 }
 
@@ -763,7 +765,10 @@ if ((-not $Rescan) -and $Clients -ne 'none' -and -not $clientsDone) {
 }
 
 # ------------------------------------------------------------------ sentinel + uninstall entry
-if ((-not $Rescan) -and (-not $NoSentinel)) {
+if ((-not $Rescan) -and (-not ($Sentinel -and -not $NoSentinel))) {
+    try { Unregister-ScheduledTask -TaskName 'BURAK BIM Sentinel' -Confirm:$false -ErrorAction Stop; Write-Ok 'Old logon task removed' } catch { }
+}
+if ((-not $Rescan) -and $Sentinel -and (-not $NoSentinel)) {
     Write-Step 'Installing BURAK BIM Sentinel (auto-connects Autodesk versions installed later)'
     try {
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ("-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"" + (Join-Path $setup 'install.ps1') + "`" -Rescan -Quiet -InstallDir `"$InstallDir`"")

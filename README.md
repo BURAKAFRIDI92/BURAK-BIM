@@ -62,7 +62,7 @@ On top of these layers come **Scan-to-BIM** and a **BIM-Inspector workflow**. Ev
 4. Restart your AI app. To fully quit Claude Desktop, right-click the tray icon and choose Quit. Claude Desktop users can also double-click **`BURAK-BIM.mcpb`** (one-click extension).
 5. Open your software and ask your AI: *"Use BURAK BIM: burak_status"*.
 
-You can also run the PowerShell installer from the extracted ZIP, without the .exe:
+For advanced or offline-compile cases, the full package ZIP also has a PowerShell installer. Windows security tools may question its `ExecutionPolicy Bypass`, so most people should use the .exe:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File installer\install.ps1                      # D:\BURAK BIM, all detected AI clients
@@ -81,7 +81,7 @@ If an AI app was installed after BURAK BIM, connect it later by running `"D:\BUR
    - AutoCAD family and Navisworks: Autodesk autoloader bundles. These are a trusted location, so there is no SECURELOAD prompt.
 5. **Connects every AI app it finds** and keeps a `.burakbim.bak` backup of every file. The apps are Claude Desktop (classic and Store), Claude Code, Codex, Cursor, Windsurf, Antigravity, Gemini CLI, VS Code, Visual Studio, Cline, Roo, Kilo, LM Studio, Kiro, Amazon Q, Trae, Continue and opencode.
 6. **Verifies** the installation with `--doctor` and a real MCP handshake.
-7. Installs the **BURAK BIM Sentinel**, a logon task that connects versions you install later.
+7. **Removes the old BURAK BIM Sentinel** logon task from earlier versions. To connect software you install later, use the start-menu entry *Repair - detect new software*.
 
 ## What gets detected and connected
 
@@ -270,7 +270,7 @@ The only files on `C:` are small manifests that Autodesk products require in the
 Use Windows **Apps & Features › BURAK BIM**, or run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "D:\BURAK BIM\setup\uninstall.ps1"          # keeps audit, reports, config, logs
+BURAK-BIM-Uninstaller.exe                                                           # keeps audit, reports, config, logs
 powershell -ExecutionPolicy Bypass -File "D:\BURAK BIM\setup\uninstall.ps1" -Purge   # removes everything
 ```
 

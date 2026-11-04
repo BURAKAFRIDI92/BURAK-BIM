@@ -9,12 +9,10 @@ This guide is for an AI agent that can run PowerShell on the user's Windows PC, 
    - At least one supported program installed (Revit, AutoCAD/Civil 3D, Navisworks, SAP2000, ETABS, CSiBridge, SAFE, Archicad, Bluebeam, PlanSwift, ...).
    - No internet, .NET or admin rights are needed (1.3 ships prebuilt binaries).
 2. Ask the user to **close Revit, AutoCAD and Navisworks**.
-3. Preview first: `powershell -ExecutionPolicy Bypass -File installer\install.ps1 -WhatIf`. Show the output to the user.
-4. Install. The default folder is `D:\BURAK BIM`. The user can pick another with `-InstallDir "E:\BURAK BIM"`. The client list is optional:
-   `powershell -ExecutionPolicy Bypass -File installer\install.ps1 -Clients claude-desktop,claude-code,codex,antigravity`
-   - `-Clients auto` (the default) configures every client it detects.
-   - `-Clients none` leaves client configs untouched.
-   - Every client config edit keeps a `.bak` backup.
+3. Tell the user what will change: the install folder, the bridges for detected software, and the configs of every detected AI app. A `.burakbim.bak` backup is kept for each config. Extract `BURAK-BIM-Installer-<version>-win-x64.zip` and check the files against `SHA256SUMS.txt`.
+4. Install with `BURAK-BIM-Installer.exe`, or silently with `BURAK-BIM-Installer.exe /S /D=E:\BURAK BIM` (`/D=` must come last, without quotes). The default folder is `D:\BURAK BIM`.
+   - Setup connects every AI app it detects.
+   - To change that afterwards, run `"<folder>\server\BurakBim.Server.exe" --disconnect-clients`, then `--connect-clients claude-desktop,codex`.
 5. Verify:
    - `"D:\BURAK BIM\server\BurakBim.Server.exe" --doctor` lists the products, the installed bridges and the connected AI apps.
    - `--selftest` must print ALL TESTS PASSED, and `--mcp-selftest` must print ALL MCP TESTS PASSED.
@@ -42,6 +40,6 @@ This guide is for an AI agent that can run PowerShell on the user's Windows PC, 
 - **Read-only mode:** if the result says READ-ONLY, do not try to work around it.
 
 ## Uninstall
-`powershell -ExecutionPolicy Bypass -File "D:\BURAK BIM\setup\uninstall.ps1"`
+Run `BURAK-BIM-Uninstaller.exe` (add `/S` for no prompts).
 
-This keeps the audit trail and reports. Add `-Purge` to remove everything, and only with the user's explicit consent.
+This keeps the audit trail, reports and config. Delete the install folder only with the user's explicit consent.

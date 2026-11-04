@@ -5,6 +5,7 @@ The release binaries are built by GitHub Actions on Windows, from your BURAK-BIM
 - the self-contained server;
 - the prebuilt bridges for Revit, AutoCAD and Navisworks 2022–2027;
 - the offline compiler;
+- `BURAK-BIM-Installer-1.3.0-win-x64.zip` (`BURAK-BIM-Installer.exe`, `BURAK-BIM-Uninstaller.exe`, guide, checksums);
 - `BURAK-BIM-Setup-1.3.0.exe`, `BURAK-BIM-1.3.0.zip` and `BURAK-BIM-1.3.0.mcpb`.
 
 ## Steps
